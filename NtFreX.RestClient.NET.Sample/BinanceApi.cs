@@ -11,6 +11,8 @@ namespace NtFreX.RestClient.NET.Sample
         private readonly int[] _statusCodesToRetry = { 500, 520 };
         private readonly RestClient _restClient;
 
+        public event EventHandler RateLimitRaised;
+
         public BinanceApi()
         {
             _restClient = new RestClientBuilder()
@@ -34,6 +36,8 @@ namespace NtFreX.RestClient.NET.Sample
                     .RetryWhen(3, _statusCodesToRetry)
                     .Build())
                 .Build();
+
+            _restClient.RateLimitRaised += (sender, args) => RateLimitRaised?.Invoke(sender, args);
             
             GetExchangeSymbols = new AsyncCachedFunction<List<string>>(GetExchangeSymbolsAsync, TimeSpan.FromMinutes(10));
             GetExchangeRate = new AsyncRateLimitedFunction<string, string, DateTime, double>(GetExchangeRateAsync, _restClient.GetMaxInterval(BinanceApiEndpointNames.AggregatedTrades), DoNotRateLimitGetExchangeRateAsync);

@@ -14,6 +14,8 @@ namespace NtFreX.RestClient.NET
 
         public HttpClient HttpClient { get; }
 
+        public event EventHandler RateLimitRaised;
+
         public RestClient(int? breakedRequestLimitStatusCode, int? delayAfterBreakedRequestLimit, (string Name, Func<object[], string> UriBuilder, TimeSpan MaxInterval, TimeSpan CachingTime, int Retries, int[] StatusCodesToRetry)[] endpoints)
         {
             _breakedRequestLimitStatusCode = breakedRequestLimitStatusCode;
@@ -39,6 +41,7 @@ namespace NtFreX.RestClient.NET
         {
             if ((int)httpResponseMessage.StatusCode == _breakedRequestLimitStatusCode)
             {
+                RateLimitRaised?.Invoke(this, EventArgs.Empty);
                 await Task.Delay(_delayAfterBreakedRequestLimit ?? 0);
             }
         }

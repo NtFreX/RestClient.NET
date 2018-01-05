@@ -10,6 +10,8 @@ namespace NtFreX.RestClient.NET.Sample
         {
             using (var binanceApi = new BinanceApi())
             {
+                binanceApi.RateLimitRaised += (sender, eventArgs) => Console.WriteLine("Rate limit raised!");
+
                 var symbols = await binanceApi.GetExchangeSymbols.ExecuteAsync();
                 await Task.WhenAll(symbols.Select(symbol => Task.Run(async () =>
                 {
