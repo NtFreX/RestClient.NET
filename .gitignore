@@ -2,6 +2,6 @@
 # This .gitignore file was automatically created by Microsoft(R) Visual Studio.
 ################################################################################
 
-bin/**
-obj/**
-.vs/**
+**/bin
+**/obj
+**/.vs
