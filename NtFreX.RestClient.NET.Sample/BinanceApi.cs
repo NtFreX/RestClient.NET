@@ -6,20 +6,37 @@ using Newtonsoft.Json.Linq;
 
 namespace NtFreX.RestClient.NET.Sample
 {
-    public class BinanceApi : RestClient
+    public class BinanceApi : IDisposable
     {
-        private static readonly int[] StatusCodesToRetry = { 500, 520 };
+        private readonly int[] _statusCodesToRetry = { 500, 520 };
+        private readonly RestClient _restClient;
 
         public BinanceApi()
-            : base(419, 5000, new(string Name, Func<object[], string> UriBuilder, TimeSpan MaxInterval, TimeSpan CachingTime, int Retries, int[] StatusCodesToRetry)[]
-            {
-                (Name: BinanceApiEndpointNames.ExchangeInfo, UriBuilder: args => "https://www.binance.com/api/v1/exchangeInfo", MaxInterval: TimeSpan.FromSeconds(5), CachingTime: TimeSpan.FromDays(1), Retries: 3, StatusCodesToRetry: StatusCodesToRetry),
-                (Name: BinanceApiEndpointNames.AggregatedTrades, UriBuilder: args => $"https://www.binance.com/api/v1/aggTrades?symbol={args[0]}&startTime={((DateTime)args[1]).ToUnixTimeMilliseconds()}&endTime={((DateTime)args[2]).ToUnixTimeMilliseconds()}", MaxInterval: TimeSpan.FromSeconds(3), CachingTime: TimeSpan.MaxValue, Retries: 3, StatusCodesToRetry: StatusCodesToRetry),
-                (Name: BinanceApiEndpointNames.Trades, UriBuilder: args => $"https://www.binance.com/api/v1/trades?symbol={args[0]}", MaxInterval: TimeSpan.FromSeconds(3), CachingTime: TimeSpan.MaxValue, Retries: 3, StatusCodesToRetry: StatusCodesToRetry)
-            })
         {
+            _restClient = new RestClientBuilder()
+                .HandleRateLimitStatusCode(419, 5000)
+                .AddEndpoint(
+                    new EndpointBuilder(BinanceApiEndpointNames.ExchangeInfo, args => "https://www.binance.com/api/v1/exchangeInfo")
+                    .WithMaxInterval(TimeSpan.FromSeconds(5))
+                    .WithCacheTime(TimeSpan.FromDays(1))
+                    .RetryWhen(3, _statusCodesToRetry)
+                    .Build())
+                .AddEndpoint(
+                    new EndpointBuilder(BinanceApiEndpointNames.AggregatedTrades, args => $"https://www.binance.com/api/v1/aggTrades?symbol={args[0]}&startTime={((DateTime)args[1]).ToUnixTimeMilliseconds()}&endTime={((DateTime)args[2]).ToUnixTimeMilliseconds()}")
+                    .WithMaxInterval(TimeSpan.FromSeconds(3))
+                    .WithCacheTime(TimeSpan.MaxValue)
+                    .RetryWhen(3, _statusCodesToRetry)
+                    .Build())
+                .AddEndpoint(
+                    new EndpointBuilder(BinanceApiEndpointNames.Trades, args => $"https://www.binance.com/api/v1/trades?symbol={args[0]}")
+                    .WithMaxInterval(TimeSpan.FromSeconds(3))
+                    .WithCacheTime(TimeSpan.FromSeconds(2))
+                    .RetryWhen(3, _statusCodesToRetry)
+                    .Build())
+                .Build();
+            
             GetExchangeSymbols = new AsyncCachedFunction<List<string>>(GetExchangeSymbolsAsync, TimeSpan.FromMinutes(10));
-            GetExchangeRate = new AsyncRateLimitedFunction<string, string, DateTime, double>(GetExchangeRateAsync, GetMaxInterval(BinanceApiEndpointNames.AggregatedTrades), DoNotRateLimitGetExchangeRateAsync);
+            GetExchangeRate = new AsyncRateLimitedFunction<string, string, DateTime, double>(GetExchangeRateAsync, _restClient.GetMaxInterval(BinanceApiEndpointNames.AggregatedTrades), DoNotRateLimitGetExchangeRateAsync);
 
             _getSupportedSymbol = new AsyncCachedFunction<string, string, string>(GetSupportedSymbolAsync, TimeSpan.FromMinutes(10));
         }
@@ -32,13 +49,13 @@ namespace NtFreX.RestClient.NET.Sample
             var symbol = await _getSupportedSymbol.ExecuteAsync(originCurrency, targetCurrency);
             var searchInMiliseconds = dateTime.ToUnixTimeMilliseconds();
 
-            var trades = await CallEndpointAsync(BinanceApiEndpointNames.AggregatedTrades, symbol, startAndEnd.Start, startAndEnd.End);
+            var trades = await _restClient.CallEndpointAsync(BinanceApiEndpointNames.AggregatedTrades, symbol, startAndEnd.Start, startAndEnd.End);
             var amount = GetNearestPrice(searchInMiliseconds, trades, items => items.Value<long>("T"), items => items.Value<double>("p"), false);
             if (amount != null)
                 return amount.Value;
 
             //TODO: is this needed because no aggregated trades exists allready ??
-            trades = await CallEndpointAsync(BinanceApiEndpointNames.Trades, symbol);
+            trades = await _restClient.CallEndpointAsync(BinanceApiEndpointNames.Trades, symbol);
             amount = GetNearestPrice(searchInMiliseconds, trades, items => items.Value<long>("time"), items => items.Value<double>("price"), true);
             if (amount != null)
                 return amount.Value;
@@ -114,7 +131,7 @@ namespace NtFreX.RestClient.NET.Sample
         {
             var startAndEnd = GetStartAndEndForGetExchangeRate(dateTime);
             var symbol = await _getSupportedSymbol.ExecuteAsync(originCurrency, targetCurrency);
-            return IsCached(BinanceApiEndpointNames.AggregatedTrades, symbol, startAndEnd.Start, startAndEnd.End);
+            return _restClient.IsCached(BinanceApiEndpointNames.AggregatedTrades, symbol, startAndEnd.Start, startAndEnd.End);
         }
         private (DateTime Start, DateTime End) GetStartAndEndForGetExchangeRate(DateTime dateTime)
             => (dateTime.AddMinutes(-5), dateTime.AddMinutes(5));
@@ -122,7 +139,7 @@ namespace NtFreX.RestClient.NET.Sample
         public readonly AsyncCachedFunction<List<string>> GetExchangeSymbols;
         private async Task<List<string>> GetExchangeSymbolsAsync()
         {
-            var response = await CallEndpointAsync(BinanceApiEndpointNames.ExchangeInfo);
+            var response = await _restClient.CallEndpointAsync(BinanceApiEndpointNames.ExchangeInfo);
             var json = JObject.Parse(response);
             return json.Value<JArray>("symbols").Select(x =>
             {
@@ -153,6 +170,11 @@ namespace NtFreX.RestClient.NET.Sample
         }
         #endregion
         
+        public void Dispose()
+        {
+            _restClient?.Dispose();
+        }
+
         private static class BinanceApiEndpointNames
         {
             public static string ExchangeInfo { get; } = nameof(ExchangeInfo);

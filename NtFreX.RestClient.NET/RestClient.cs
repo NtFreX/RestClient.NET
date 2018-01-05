@@ -6,15 +6,15 @@ using System.Threading.Tasks;
 
 namespace NtFreX.RestClient.NET
 {
-    public abstract class RestClient : IDisposable
+    public sealed class RestClient : IDisposable
     {
-        private readonly int _breakedRequestLimitStatusCode;
-        private readonly int _delayAfterBreakedRequestLimit;
+        private readonly int? _breakedRequestLimitStatusCode;
+        private readonly int? _delayAfterBreakedRequestLimit;
         private readonly Dictionary<string, AdvancedHttpRequest<object[]>> _endpoints;
 
         public HttpClient HttpClient { get; }
 
-        protected RestClient(int breakedRequestLimitStatusCode, int delayAfterBreakedRequestLimit, (string Name, Func<object[], string> UriBuilder, TimeSpan MaxInterval, TimeSpan CachingTime, int Retries, int[] StatusCodesToRetry)[] endpoints)
+        public RestClient(int? breakedRequestLimitStatusCode, int? delayAfterBreakedRequestLimit, (string Name, Func<object[], string> UriBuilder, TimeSpan MaxInterval, TimeSpan CachingTime, int Retries, int[] StatusCodesToRetry)[] endpoints)
         {
             _breakedRequestLimitStatusCode = breakedRequestLimitStatusCode;
             _delayAfterBreakedRequestLimit = delayAfterBreakedRequestLimit;
@@ -27,7 +27,7 @@ namespace NtFreX.RestClient.NET
                 var request = new AdvancedHttpRequest<object[]>(
                     HttpClient, endpoint.UriBuilder, endpoint.MaxInterval,
                     endpoint.CachingTime, endpoint.Retries,
-                    endpoint.StatusCodesToRetry.Concat(new[] { breakedRequestLimitStatusCode }).ToArray())
+                    breakedRequestLimitStatusCode.HasValue ? endpoint.StatusCodesToRetry.Concat(new[] { breakedRequestLimitStatusCode.Value }).ToArray() : endpoint.StatusCodesToRetry)
                 {
                     BeforeResponseHandeled = BeforeResponseHandeledAsync
                 };
@@ -39,15 +39,15 @@ namespace NtFreX.RestClient.NET
         {
             if ((int)httpResponseMessage.StatusCode == _breakedRequestLimitStatusCode)
             {
-                await Task.Delay(_delayAfterBreakedRequestLimit);
+                await Task.Delay(_delayAfterBreakedRequestLimit ?? 0);
             }
         }
 
-        protected async Task<string> CallEndpointAsync(string name, params object[] arguments)
+        public async Task<string> CallEndpointAsync(string name, params object[] arguments)
             => await _endpoints[name].ExecuteAsync(arguments);
-        protected TimeSpan GetMaxInterval(string name)
+        public TimeSpan GetMaxInterval(string name)
             => _endpoints[name].MaxInterval;
-        protected bool IsCached(string name, params object[] arguments)
+        public bool IsCached(string name, params object[] arguments)
             => _endpoints[name].IsCached(arguments);
 
         public void Dispose()
