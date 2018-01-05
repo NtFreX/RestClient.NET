@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 
 namespace NtFreX.RestClient.NET
 {
-    public abstract class AdvancedHttpRequestBase : IDisposable
+    public abstract class AdvancedHttpRequestBase
     {
         private readonly int _maxRetries;
         private readonly int[] _replayOnStatusCode;
@@ -54,11 +54,6 @@ namespace NtFreX.RestClient.NET
 
             response.EnsureSuccessStatusCode();
             return await response.Content.ReadAsStringAsync();
-        }
-
-        public void Dispose()
-        {
-            _httpClient?.Dispose();
         }
     }
 

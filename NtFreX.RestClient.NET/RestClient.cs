@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace NtFreX.RestClient.NET
 {
-    public abstract class RestClient
+    public abstract class RestClient : IDisposable
     {
         private readonly int _breakedRequestLimitStatusCode;
         private readonly int _delayAfterBreakedRequestLimit;
@@ -49,5 +49,10 @@ namespace NtFreX.RestClient.NET
             => _endpoints[name].MaxInterval;
         protected bool IsCached(string name, params object[] arguments)
             => _endpoints[name].IsCached(arguments);
+
+        public void Dispose()
+        {
+            HttpClient?.Dispose();
+        }
     }
 }
