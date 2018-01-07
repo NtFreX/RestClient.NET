@@ -1,5 +1,5 @@
 ﻿using System.Collections.Generic;
-using System.Linq;
+using System.Net.Http;
 
 namespace NtFreX.RestClient.NET
 {
@@ -14,23 +14,27 @@ namespace NtFreX.RestClient.NET
             return this;
         }
 
-        public RestClientBuilder AddEndpoint(EndpointBuilder.EndpointSubject definition)
+        public RestClientBuilder AddEndpoint(string name, AdvancedHttpRequest endpoint)
         {
-            _subject.Endpoints.Add(definition);
+            _subject.Endpoints.Add(name, endpoint);
+            return this;
+        }
+
+        public RestClientBuilder WithHttpClient(HttpClient httpClient)
+        {
+            _subject.HttpClient = httpClient;
             return this;
         }
 
         public RestClient Build()
-        {
-            var endpoints = _subject.Endpoints.Select(x => (Name: x.Name, UriBuilder: x.UriBuilder, MaxInterval: x.MaxInterval, CacheTime: x.CacheTime, Retries: x.Retries, StatusCodesToRetry: x.StatusCodesToRetry.ToArray()));
-            return new RestClient(_subject.RateLimtBreakedStatusCode, _subject.DelayAfterRateLimitBreak, endpoints.ToArray());
-        }
+            => new RestClient(_subject.HttpClient, _subject.RateLimtBreakedStatusCode, _subject.DelayAfterRateLimitBreak, _subject.Endpoints);
 
         private class RestClientSubject
         {
-            public int? RateLimtBreakedStatusCode { get; set; }
-            public int? DelayAfterRateLimitBreak { get; set; }
-            public List<EndpointBuilder.EndpointSubject> Endpoints = new List<EndpointBuilder.EndpointSubject>();
+            public HttpClient HttpClient { get; set; }
+            public int RateLimtBreakedStatusCode { get; set; }
+            public int DelayAfterRateLimitBreak { get; set; }
+            public readonly Dictionary<string, AdvancedHttpRequest> Endpoints = new Dictionary<string, AdvancedHttpRequest>();
         }
     }
 }

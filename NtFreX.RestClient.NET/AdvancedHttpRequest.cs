@@ -1,128 +1,64 @@
 ﻿using System;
-using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
+using NtFreX.RestClient.NET.Flow;
 
 namespace NtFreX.RestClient.NET
 {
-    public abstract class AdvancedHttpRequestBase
+    public class AdvancedHttpRequest
     {
-        private readonly int _maxRetries;
-        private readonly int[] _replayOnStatusCode;
-        private readonly HttpClient _httpClient;
-        private readonly AsyncRateLimitedCachedFunction<string, string> _function;
+        private readonly AsyncFunction<string, HttpResponseMessage> _requestFunc;
+        private readonly AsyncCachedFunction<string, HttpResponseMessage> _cachingFunc;
+        private readonly AsyncTimeRateLimitedFunction<string, HttpResponseMessage> _timeRatedFunc;
+        private readonly AsyncWeightRateLimitedFunction<string, HttpResponseMessage> _weightRatedFunc;
 
-        public Func<HttpResponseMessage, Task> BeforeResponseHandeled { get; set; }
+        private readonly Func<string, Task<string>> _func;
+        private readonly Func<object[], Task<string>> _uriBuilder;
 
-        public TimeSpan MaxInterval => _function.MaxInterval;
-        public TimeSpan CachingTime => _function.CachingTime;
+        public HttpClient HttpClient { get; }
+        public event EventHandler<HttpResponseMessage> AfterRequestExecution;
 
-        protected AdvancedHttpRequestBase(HttpClient httpClient, TimeSpan maxInterval, TimeSpan cachingTime, int maxRetries, params int[] replayOnStatusCode)
+        public TimeSpan MinInterval => _timeRatedFunc?.MinInterval ?? TimeSpan.Zero;
+        public TimeSpan CachingTime => _cachingFunc?.CachingTime ?? TimeSpan.Zero;
+
+        public AdvancedHttpRequest(HttpClient httpClient, 
+            AsyncFunction<string, HttpResponseMessage> requestFunc,
+            AsyncRetryFunction<string, HttpResponseMessage> retryFunc,
+            AsyncCachedFunction<string, HttpResponseMessage> cachingFunc,
+            AsyncTimeRateLimitedFunction<string, HttpResponseMessage> timeRatedFunc,
+            AsyncWeightRateLimitedFunction<string, HttpResponseMessage> weightRatedFunc,
+            Func<string, Task<string>> func,
+            Func<object[], Task<string>> uriBuilder)
         {
-            _maxRetries = maxRetries;
-            _replayOnStatusCode = replayOnStatusCode;
-            _httpClient = httpClient;
-            _function = new AsyncRateLimitedCachedFunction<string, string>(maxInterval, cachingTime, GetStringAsyncFunction, IgnoreRateLimitAsyncFunction);
+            _requestFunc = requestFunc;
+            _cachingFunc = cachingFunc;
+            _timeRatedFunc = timeRatedFunc;
+            _weightRatedFunc = weightRatedFunc;
+            _func = func;
+            _uriBuilder = uriBuilder;
+
+            retryFunc.AfterExecution += (sender, result) => AfterRequestExecution?.Invoke(this, (HttpResponseMessage) result);
+
+            HttpClient = httpClient;
         }
 
-        protected async Task<string> ExecuteInnerAsync(string uri)
-            => await _function.ExecuteAsync(uri);
-        protected async Task<TimeSpan> IsRateLimitedInnerAsync(string uri)
-            => await _function.IsRateLimitedAsync(uri);
-        protected bool IsCachedInner(string uri)
-            => _function.IsCached(uri);
-
-        private async Task<bool> IgnoreRateLimitAsyncFunction(string uri)
-            => await Task.FromResult(_function.IsCached(uri));
-        private async Task<string> GetStringAsyncFunction(string uri)
-            => await GetStringInnerAsync(uri);
-
-        private async Task<string> GetStringInnerAsync(string uri, int tryCounter = 0)
+        public async Task<string> ExecuteAsync(params object[] arguments)
+            => await _func(await _uriBuilder(arguments));
+        public bool IsCached(params object[] arguments)
+            => _cachingFunc?.HasCached((string) arguments[0]) ?? false;
+        public async Task<TimeSpan> IsRateLimitedAsync(params object[] arguments)
         {
-            var request = new HttpRequestMessage(HttpMethod.Get, uri);
-            var response = await _httpClient.SendAsync(request);
-
-            if (BeforeResponseHandeled != null)
+            if (_weightRatedFunc != null)
             {
-                await BeforeResponseHandeled.Invoke(response);
+                return await _weightRatedFunc.GetTimeToNextExecutionAsync((string) arguments[0]);
             }
 
-            if (_replayOnStatusCode.Any(x => x == (int)response.StatusCode) && tryCounter < _maxRetries)
+            if (_timeRatedFunc != null)
             {
-                return await GetStringInnerAsync(uri, tryCounter + 1);
+                return await _timeRatedFunc.GetTimeToNextExecutionAsync((string)arguments[0]);
             }
 
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadAsStringAsync();
+            return TimeSpan.Zero;
         }
-    }
-
-    public class AdvancedHttpRequest : AdvancedHttpRequestBase
-    {
-        private readonly Func<string> _uriBuilder;
-
-        public AdvancedHttpRequest(HttpClient httpClient, Func<string> uriBuilder, TimeSpan maxInterval, TimeSpan cachingTime, int maxRetries, params int[] replayOnStatusCode)
-            : base(httpClient, maxInterval, cachingTime, maxRetries, replayOnStatusCode)
-        {
-            _uriBuilder = uriBuilder;
-        }
-
-        public async Task<string> ExecuteAsync()
-            => await ExecuteInnerAsync(_uriBuilder());
-        public async Task<TimeSpan> IsRateLimitedAsync()
-            => await IsRateLimitedInnerAsync(_uriBuilder());
-        public bool IsCached()
-            => IsCachedInner(_uriBuilder());
-    }
-    public class AdvancedHttpRequest<TArg1> : AdvancedHttpRequestBase
-    {
-        private readonly Func<TArg1, string> _uriBuilder;
-
-        public AdvancedHttpRequest(HttpClient httpClient, Func<TArg1, string> uriBuilder, TimeSpan maxInterval, TimeSpan cachingTime, int maxRetries, params int[] replayOnStatusCode)
-            : base(httpClient, maxInterval, cachingTime, maxRetries, replayOnStatusCode)
-        {
-            _uriBuilder = uriBuilder;
-        }
-
-        public async Task<string> ExecuteAsync(TArg1 arg1)
-            => await ExecuteInnerAsync(_uriBuilder(arg1));
-        public async Task<TimeSpan> IsRateLimitedAsync(TArg1 arg1)
-            => await IsRateLimitedInnerAsync(_uriBuilder(arg1));
-        public bool IsCached(TArg1 arg1)
-            => IsCachedInner(_uriBuilder(arg1));
-    }
-    public class AdvancedHttpRequest<TArg1, TArg2> : AdvancedHttpRequestBase
-    {
-        private readonly Func<TArg1, TArg2, string> _uriBuilder;
-
-        public AdvancedHttpRequest(HttpClient httpClient, Func<TArg1, TArg2, string> uriBuilder, TimeSpan maxInterval, TimeSpan cachingTime, int maxRetries, params int[] replayOnStatusCode)
-            : base(httpClient, maxInterval, cachingTime, maxRetries, replayOnStatusCode)
-        {
-            _uriBuilder = uriBuilder;
-        }
-
-        public async Task<string> ExecuteAsync(TArg1 arg1, TArg2 arg2)
-            => await ExecuteInnerAsync(_uriBuilder(arg1, arg2));
-        public async Task<TimeSpan> IsRateLimitedAsync(TArg1 arg1, TArg2 arg2)
-            => await IsRateLimitedInnerAsync(_uriBuilder(arg1, arg2));
-        public bool IsCached(TArg1 arg1, TArg2 arg2)
-            => IsCachedInner(_uriBuilder(arg1, arg2));
-    }
-    public class AdvancedHttpRequest<TArg1, TArg2, TArg3> : AdvancedHttpRequestBase
-    {
-        private readonly Func<TArg1, TArg2, TArg3, string> _uriBuilder;
-
-        public AdvancedHttpRequest(HttpClient httpClient, Func<TArg1, TArg2, TArg3, string> uriBuilder, TimeSpan maxInterval, TimeSpan cachingTime, int maxRetries, params int[] replayOnStatusCode)
-            : base(httpClient, maxInterval, cachingTime, maxRetries, replayOnStatusCode)
-        {
-            _uriBuilder = uriBuilder;
-        }
-
-        public async Task<string> ExecuteAsync(TArg1 arg1, TArg2 arg2, TArg3 arg3)
-            => await ExecuteInnerAsync(_uriBuilder(arg1, arg2, arg3));
-        public async Task<TimeSpan> IsRateLimitedAsync(TArg1 arg1, TArg2 arg2, TArg3 arg3)
-            => await IsRateLimitedInnerAsync(_uriBuilder(arg1, arg2, arg3));
-        public bool IsCached(TArg1 arg1, TArg2 arg2, TArg3 arg3)
-            => IsCachedInner(_uriBuilder(arg1, arg2, arg3));
     }
 }

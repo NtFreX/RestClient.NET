@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
+using NtFreX.RestClient.NET.Helper;
 
 namespace NtFreX.RestClient.NET
 {
@@ -10,46 +11,43 @@ namespace NtFreX.RestClient.NET
     {
         private readonly int? _breakedRequestLimitStatusCode;
         private readonly int? _delayAfterBreakedRequestLimit;
-        private readonly Dictionary<string, AdvancedHttpRequest<object[]>> _endpoints;
+        private readonly Dictionary<string, AdvancedHttpRequest> _endpoints;
+        
+        public IndexerProperty<string, TimeSpan> MinInterval { get; }
+        public IndexerProperty<string, TimeSpan> CachingTime { get; }
 
         public HttpClient HttpClient { get; }
 
         public event EventHandler RateLimitRaised;
 
-        public RestClient(int? breakedRequestLimitStatusCode, int? delayAfterBreakedRequestLimit, (string Name, Func<object[], string> UriBuilder, TimeSpan MaxInterval, TimeSpan CachingTime, int Retries, int[] StatusCodesToRetry)[] endpoints)
+        public RestClient(HttpClient httpClient, int breakedRequestLimitStatusCode, int delayAfterBreakedRequestLimit, Dictionary<string, AdvancedHttpRequest> endpoints)
         {
             _breakedRequestLimitStatusCode = breakedRequestLimitStatusCode;
             _delayAfterBreakedRequestLimit = delayAfterBreakedRequestLimit;
-            _endpoints = new Dictionary<string, AdvancedHttpRequest<object[]>>();
+            _endpoints = new Dictionary<string, AdvancedHttpRequest>();
 
-            HttpClient = new HttpClient();
+            MinInterval = new IndexerProperty<string, TimeSpan>(arg => _endpoints[arg].MinInterval);
+            CachingTime = new IndexerProperty<string, TimeSpan>(arg => _endpoints[arg].CachingTime);
+            HttpClient = httpClient;
 
-            foreach (var endpoint in endpoints)
-            {
-                var request = new AdvancedHttpRequest<object[]>(
-                    HttpClient, endpoint.UriBuilder, endpoint.MaxInterval,
-                    endpoint.CachingTime, endpoint.Retries,
-                    breakedRequestLimitStatusCode.HasValue ? endpoint.StatusCodesToRetry.Concat(new[] { breakedRequestLimitStatusCode.Value }).ToArray() : endpoint.StatusCodesToRetry)
-                {
-                    BeforeResponseHandeled = BeforeResponseHandeledAsync
-                };
-                _endpoints.Add(endpoint.Name, request);
-            }
+            _endpoints = endpoints;
+
+            endpoints.ToList().ForEach(x => x.Value.AfterRequestExecution += AfterRequestExecution);
         }
 
-        private async Task BeforeResponseHandeledAsync(HttpResponseMessage httpResponseMessage)
+        private void AfterRequestExecution(object sender, HttpResponseMessage httpResponseMessage)
         {
             if ((int)httpResponseMessage.StatusCode == _breakedRequestLimitStatusCode)
             {
                 RateLimitRaised?.Invoke(this, EventArgs.Empty);
-                await Task.Delay(_delayAfterBreakedRequestLimit ?? 0);
+                Task.Delay(_delayAfterBreakedRequestLimit ?? 0).GetAwaiter().GetResult();
             }
         }
 
         public async Task<string> CallEndpointAsync(string name, params object[] arguments)
             => await _endpoints[name].ExecuteAsync(arguments);
-        public TimeSpan GetMaxInterval(string name)
-            => _endpoints[name].MaxInterval;
+        public async Task<TimeSpan> IsRateLimitedAsync(string name, params object[] arguments)
+            => await _endpoints[name].IsRateLimitedAsync(arguments);
         public bool IsCached(string name, params object[] arguments)
             => _endpoints[name].IsCached(arguments);
 

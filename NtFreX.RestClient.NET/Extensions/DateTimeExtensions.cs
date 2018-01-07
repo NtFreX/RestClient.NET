@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace NtFreX.RestClient.NET.Sample
+namespace NtFreX.RestClient.NET.Extensions
 {
     public static class DateTimeExtensions
     {
