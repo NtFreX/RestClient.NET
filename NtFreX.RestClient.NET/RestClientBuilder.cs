@@ -21,9 +21,12 @@ namespace NtFreX.RestClient.NET
             return this;
         }
         
-        public RestClientBuilder AddEndpoint(string name, Func<HttpClient, AdvancedHttpRequest> endpoint)
+        public RestClientBuilder AddEndpoint(string name, Action<AdvancedHttpRequestBuilder> buildFnc)
         {
-            _subject.Endpoints.Add(name, endpoint(_subject.HttpClient));
+            var builder = new AdvancedHttpRequestBuilder();
+            builder.UseHttpClient(_subject.HttpClient);
+            buildFnc(builder);
+            _subject.Endpoints.Add(name, builder.Build());
             return this;
         }
 

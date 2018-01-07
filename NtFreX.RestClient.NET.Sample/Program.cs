@@ -12,14 +12,12 @@ namespace NtFreX.RestClient.NET.Sample
         {
             try
             {
-                var rateLimitConfiguration = new WeightRateLimitedFunctionConfiguration(400);
+                var rateLimitConfiguration = new WeightRateLimitedFunctionConfiguration(250);
 
-                var cached = new AsyncCachedFunction<string>(async () => await Task.FromResult("Hello world"), TimeSpan.FromTicks(5));
-                var weightRateLimited = new AsyncWeightRateLimitedFunction<string>(cached, 5, rateLimitConfiguration, () => Task.FromResult(cached.HasCached()));
-                var timeRateLimited = new AsyncTimeRateLimitedFunction<string>(weightRateLimited, TimeSpan.FromSeconds(1), () => Task.FromResult(cached.HasCached()));
-
-                var helloWorldString = await timeRateLimited.ExecuteAsync();
-
+                //var cached = new AsyncCachedFunction<string>(async () => await Task.FromResult("Hello world"), TimeSpan.Zero);
+                var weightRateLimited = new AsyncWeightRateLimitedFunction<string>(async () => await Task.FromResult("Hello world") /*cached*/, 5, rateLimitConfiguration/*, () => Task.FromResult(cached.HasCached())*/);
+                var timeRateLimited = new AsyncTimeRateLimitedFunction<string>(weightRateLimited, TimeSpan.FromSeconds(1)/*, () => Task.FromResult(cached.HasCached())*/);
+                
                 var request = new AdvancedHttpRequestBuilder()
                     .UseHttpClient(new HttpClient())
                     .WithUriBuilder(_ => Task.FromResult("http://www.google.com"))
@@ -30,10 +28,11 @@ namespace NtFreX.RestClient.NET.Sample
                     .Build();
 
                 var googleContent = await request.ExecuteAsync();
+                Console.WriteLine(googleContent);
 
                 for (int i = 0; i < 100; i++)
                 {
-                    Console.WriteLine(await timeRateLimited.ExecuteAsync());
+                    Console.WriteLine($"{DateTime.Now} - {await timeRateLimited.ExecuteAsync()}");
                 }
 
                 using (var binanceApi = new BinanceApi())

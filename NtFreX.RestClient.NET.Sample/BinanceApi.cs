@@ -11,41 +11,35 @@ namespace NtFreX.RestClient.NET.Sample
 {
     public class BinanceApi : IDisposable
     {
-        private readonly int[] _statusCodesToRetry = { 500, 520 };
         private readonly RestClient _restClient;
 
         public event EventHandler RateLimitRaised;
 
         public BinanceApi()
         {
+            int[] statusCodesToRetry = { 500, 520 };
+            var retryStrategy = new RetryStrategy(
+                maxTries: 3, 
+                retryWhenResult: message => statusCodesToRetry.Contains((int)message.StatusCode), 
+                retryWhenException: exception => true);
+
             _restClient = new RestClientBuilder()
                 .WithHttpClient(new HttpClient())
                 .HandleRateLimitStatusCode(419, 5000)
-                .AddEndpoint(BinanceApiEndpointNames.ExchangeInfo, client =>
-                    new AdvancedHttpRequestBuilder()
-                    .WithUriBuilder(args => Task.FromResult("https://www.binance.com/api/v1/exchangeInfo"))
-                    .UseHttpClient(client)
+                .AddEndpoint(BinanceApiEndpointNames.ExchangeInfo, builder => builder
+                    .WithUriBuilder(_ => Task.FromResult("https://www.binance.com/api/v1/exchangeInfo"))
                     .Cache(TimeSpan.FromDays(1))
                     .TimeRateLime(TimeSpan.FromSeconds(1))
-                    .Retry(3, message => _statusCodesToRetry.Contains((int)message.StatusCode), exception => true)
-                    .Build())
-                .AddEndpoint(
-                    BinanceApiEndpointNames.AggregatedTrades, client => 
-                    new AdvancedHttpRequestBuilder()
+                    .Retry(retryStrategy))
+                .AddEndpoint(BinanceApiEndpointNames.AggregatedTrades, builder => builder
                     .WithUriBuilder(args => Task.FromResult($"https://www.binance.com/api/v1/aggTrades?symbol={args[0]}&startTime={((DateTime)args[1]).ToUnixTimeMilliseconds()}&endTime={((DateTime)args[2]).ToUnixTimeMilliseconds()}"))
-                    .UseHttpClient(client)
                     .TimeRateLime(TimeSpan.FromSeconds(1))
                     .Cache(TimeSpan.MaxValue)
-                    .Retry(3, message => _statusCodesToRetry.Contains((int)message.StatusCode), exception => true)
-                    .Build())
-                .AddEndpoint(
-                    BinanceApiEndpointNames.Trades, client => 
-                    new AdvancedHttpRequestBuilder()
+                    .Retry(retryStrategy))
+                .AddEndpoint(BinanceApiEndpointNames.Trades, builder => builder
                     .WithUriBuilder(args => Task.FromResult($"https://www.binance.com/api/v1/trades?symbol={args[0]}"))
-                    .UseHttpClient(client)
                     .TimeRateLime(TimeSpan.FromSeconds(1))
-                    .Retry(3, message => _statusCodesToRetry.Contains((int)message.StatusCode), exception => true)
-                    .Build())
+                    .Retry(retryStrategy))
                 .Build();
             
             _restClient.RateLimitRaised += (sender, args) => RateLimitRaised?.Invoke(sender, args);

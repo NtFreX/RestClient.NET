@@ -17,6 +17,14 @@ namespace NtFreX.RestClient.NET
             return this;
         }
 
+        public AdvancedHttpRequestBuilder Retry(RetryStrategy retryStrategy)
+        {
+            _subject.MaxRetryCount = retryStrategy.MaxRetries;
+            _subject.RetryWhenResult = retryStrategy.RetryWhenResult;
+            _subject.RetryWhenException = retryStrategy.RetryWhenException;
+            return this;
+        }
+
         public AdvancedHttpRequestBuilder Cache(TimeSpan cachingTime)
         {
             _subject.CachingTime = cachingTime;

@@ -45,6 +45,9 @@ namespace NtFreX.RestClient.NET.Flow
 
     public class WeightRateLimitedFunction<T> : WeightRateLimitedFunctionBase
     {
+        public WeightRateLimitedFunction(Func<T> func, int weight, WeightRateLimitedFunctionConfiguration configuration)
+            : base(new Function<T>(func), weight, configuration) { }
+
         public WeightRateLimitedFunction(FunctionBaseDecorator func, int weight, WeightRateLimitedFunctionConfiguration configuration)
             : base(func, weight, configuration) { }
 
@@ -59,6 +62,9 @@ namespace NtFreX.RestClient.NET.Flow
 
     public class AsyncWeightRateLimitedFunction : WeightRateLimitedFunctionBase
     {
+        public AsyncWeightRateLimitedFunction(Func<Task> func, int weight, WeightRateLimitedFunctionConfiguration configuration)
+            : base(new AsyncFunction(func), weight, configuration) { }
+
         public AsyncWeightRateLimitedFunction(FunctionBaseDecorator func, int weight, WeightRateLimitedFunctionConfiguration configuration)
             : base(func, weight, configuration) { }
 
@@ -72,6 +78,9 @@ namespace NtFreX.RestClient.NET.Flow
     }
     public class AsyncWeightRateLimitedFunction<T> : WeightRateLimitedFunctionBase
     {
+        public AsyncWeightRateLimitedFunction(Func<Task<T>> func, int weight, WeightRateLimitedFunctionConfiguration configuration)
+            : base(new AsyncFunction<T>(func), weight, configuration) { }
+
         public AsyncWeightRateLimitedFunction(FunctionBaseDecorator func, int weight, WeightRateLimitedFunctionConfiguration configuration)
             : base(func, weight, configuration) { }
 
@@ -85,6 +94,9 @@ namespace NtFreX.RestClient.NET.Flow
     }
     public class AsyncWeightRateLimitedFunction<TArg1, TResult> : WeightRateLimitedFunctionBase
     {
+        public AsyncWeightRateLimitedFunction(Func<TArg1, Task<TResult>> func, int weight, WeightRateLimitedFunctionConfiguration configuration)
+            : base(new AsyncFunction<TArg1, TResult>(func), weight, configuration) { }
+
         public AsyncWeightRateLimitedFunction(FunctionBaseDecorator func, int weight, WeightRateLimitedFunctionConfiguration configuration)
             : base(func, weight, configuration) { }
 
