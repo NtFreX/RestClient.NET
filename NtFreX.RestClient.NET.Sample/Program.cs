@@ -12,10 +12,9 @@ namespace NtFreX.RestClient.NET.Sample
         {
             try
             {
-                var rateLimitConfiguration = new WeightRateLimitedFunctionConfiguration(2000);
-                var func = new Func<Task<string>>(async () => await Task.FromResult("Hello world"));
-                var decorableFunc = new AsyncFunction<string>(func);
-                var cached = new AsyncCachedFunction<string>(decorableFunc, TimeSpan.FromSeconds(5));
+                var rateLimitConfiguration = new WeightRateLimitedFunctionConfiguration(400);
+
+                var cached = new AsyncCachedFunction<string>(async () => await Task.FromResult("Hello world"), TimeSpan.FromTicks(5));
                 var weightRateLimited = new AsyncWeightRateLimitedFunction<string>(cached, 5, rateLimitConfiguration, () => Task.FromResult(cached.HasCached()));
                 var timeRateLimited = new AsyncTimeRateLimitedFunction<string>(weightRateLimited, TimeSpan.FromSeconds(1), () => Task.FromResult(cached.HasCached()));
 

@@ -18,33 +18,31 @@ namespace NtFreX.RestClient.NET.Sample
 
         public BinanceApi()
         {
-            var httpClient = new HttpClient();
             _restClient = new RestClientBuilder()
-                .WithHttpClient(httpClient)
+                .WithHttpClient(new HttpClient())
                 .HandleRateLimitStatusCode(419, 5000)
-                .AddEndpoint(
-                    BinanceApiEndpointNames.ExchangeInfo,
+                .AddEndpoint(BinanceApiEndpointNames.ExchangeInfo, client =>
                     new AdvancedHttpRequestBuilder()
                     .WithUriBuilder(args => Task.FromResult("https://www.binance.com/api/v1/exchangeInfo"))
-                    .UseHttpClient(httpClient)
+                    .UseHttpClient(client)
                     .Cache(TimeSpan.FromDays(1))
                     .TimeRateLime(TimeSpan.FromSeconds(1))
                     .Retry(3, message => _statusCodesToRetry.Contains((int)message.StatusCode), exception => true)
                     .Build())
                 .AddEndpoint(
-                    BinanceApiEndpointNames.AggregatedTrades,
+                    BinanceApiEndpointNames.AggregatedTrades, client => 
                     new AdvancedHttpRequestBuilder()
                     .WithUriBuilder(args => Task.FromResult($"https://www.binance.com/api/v1/aggTrades?symbol={args[0]}&startTime={((DateTime)args[1]).ToUnixTimeMilliseconds()}&endTime={((DateTime)args[2]).ToUnixTimeMilliseconds()}"))
-                    .UseHttpClient(httpClient)
+                    .UseHttpClient(client)
                     .TimeRateLime(TimeSpan.FromSeconds(1))
                     .Cache(TimeSpan.MaxValue)
                     .Retry(3, message => _statusCodesToRetry.Contains((int)message.StatusCode), exception => true)
                     .Build())
                 .AddEndpoint(
-                    BinanceApiEndpointNames.Trades,
+                    BinanceApiEndpointNames.Trades, client => 
                     new AdvancedHttpRequestBuilder()
                     .WithUriBuilder(args => Task.FromResult($"https://www.binance.com/api/v1/trades?symbol={args[0]}"))
-                    .UseHttpClient(httpClient)
+                    .UseHttpClient(client)
                     .TimeRateLime(TimeSpan.FromSeconds(1))
                     .Retry(3, message => _statusCodesToRetry.Contains((int)message.StatusCode), exception => true)
                     .Build())
@@ -52,10 +50,10 @@ namespace NtFreX.RestClient.NET.Sample
             
             _restClient.RateLimitRaised += (sender, args) => RateLimitRaised?.Invoke(sender, args);
             
-            GetExchangeSymbols = new AsyncCachedFunction<List<string>>(new AsyncFunction<List<string>>(GetExchangeSymbolsAsync), _restClient.CachingTime[BinanceApiEndpointNames.ExchangeInfo]);
-            GetExchangeRate = new AsyncTimeRateLimitedFunction<string, string, DateTime, double>(new AsyncFunction<string, string, DateTime, double>(GetExchangeRateAsync), _restClient.MinInterval[BinanceApiEndpointNames.AggregatedTrades], DoNotRateLimitGetExchangeRateAsync);
+            GetExchangeSymbols = new AsyncCachedFunction<List<string>>(GetExchangeSymbolsAsync, _restClient.CachingTime[BinanceApiEndpointNames.ExchangeInfo]);
+            GetExchangeRate = new AsyncTimeRateLimitedFunction<string, string, DateTime, double>(GetExchangeRateAsync, _restClient.MinInterval[BinanceApiEndpointNames.AggregatedTrades], DoNotRateLimitGetExchangeRateAsync);
 
-            _getSupportedSymbol = new AsyncCachedFunction<string, string, string>(new AsyncFunction<string, string, string>(GetSupportedSymbolAsync), _restClient.CachingTime[BinanceApiEndpointNames.ExchangeInfo]);
+            _getSupportedSymbol = new AsyncCachedFunction<string, string, string>(GetSupportedSymbolAsync, _restClient.CachingTime[BinanceApiEndpointNames.ExchangeInfo]);
         }
 
         #region Public

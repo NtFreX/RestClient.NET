@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Net.Http;
 
 namespace NtFreX.RestClient.NET
@@ -17,6 +18,12 @@ namespace NtFreX.RestClient.NET
         public RestClientBuilder AddEndpoint(string name, AdvancedHttpRequest endpoint)
         {
             _subject.Endpoints.Add(name, endpoint);
+            return this;
+        }
+        
+        public RestClientBuilder AddEndpoint(string name, Func<HttpClient, AdvancedHttpRequest> endpoint)
+        {
+            _subject.Endpoints.Add(name, endpoint(_subject.HttpClient));
             return this;
         }
 

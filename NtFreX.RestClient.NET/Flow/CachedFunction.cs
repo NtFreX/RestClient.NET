@@ -14,11 +14,13 @@ namespace NtFreX.RestClient.NET.Flow
 
         public TimeSpan CachingTime { get; }
         public override event EventHandler<object> AfterExecution;
+        public override event EventHandler<object[]> BeforeExecution;
 
         protected CachedFunctionBase(FunctionBaseDecorator funcBase, TimeSpan minAllowedInterval)
         {
             _funcBase = funcBase;
             _funcBase.AfterExecution += (sender, objects) => AfterExecution?.Invoke(sender, objects);
+            _funcBase.BeforeExecution += (sender, objects) => BeforeExecution?.Invoke(sender, objects);
 
             _lastResults = new List<(DateTime DateTime, object[] Arguments, object Result)>();
 
@@ -78,9 +80,11 @@ namespace NtFreX.RestClient.NET.Flow
 
     public class CachedFunction<T> : CachedFunctionBase
     {
+        public CachedFunction(Func<T> func, TimeSpan minAllowedInterval)
+            : base(new Function<T>(func), minAllowedInterval) { }
+
         public CachedFunction(FunctionBaseDecorator func, TimeSpan minAllowedInterval)
-            : base(func, minAllowedInterval)
-        { }
+            : base(func, minAllowedInterval) { }
 
         public T Execute()
             => (T)ExecuteInnerAsync(null).GetAwaiter().GetResult();
@@ -90,6 +94,9 @@ namespace NtFreX.RestClient.NET.Flow
 
     public class AsyncCachedFunction<T> : CachedFunctionBase
     {
+        public AsyncCachedFunction(Func<Task<T>> func, TimeSpan minAllowedInterval)
+            : base(new AsyncFunction<T>(func), minAllowedInterval) { }
+
         public AsyncCachedFunction(FunctionBaseDecorator func, TimeSpan minAllowedInterval)
             : base(func, minAllowedInterval) { }
 
@@ -100,6 +107,9 @@ namespace NtFreX.RestClient.NET.Flow
     }
     public class AsyncCachedFunction<TArg1, TResult> : CachedFunctionBase
     {
+        public AsyncCachedFunction(Func<TArg1, Task<TResult>> func, TimeSpan minAllowedInterval)
+            : base(new AsyncFunction<TArg1, TResult>(func), minAllowedInterval) { }
+
         public AsyncCachedFunction(FunctionBaseDecorator func, TimeSpan minAllowedInterval)
             : base(func, minAllowedInterval) { }
 
@@ -110,6 +120,9 @@ namespace NtFreX.RestClient.NET.Flow
     }
     public class AsyncCachedFunction<TArg1, TArg2, TResult> : CachedFunctionBase
     {
+        public AsyncCachedFunction(Func<TArg1, TArg2, Task<TResult>> func, TimeSpan minAllowedInterval)
+            : base(new AsyncFunction<TArg1, TArg2, TResult>(func), minAllowedInterval) { }
+
         public AsyncCachedFunction(FunctionBaseDecorator func, TimeSpan minAllowedInterval)
             : base(func, minAllowedInterval) { }
 

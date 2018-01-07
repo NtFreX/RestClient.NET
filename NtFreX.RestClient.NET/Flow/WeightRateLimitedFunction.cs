@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace NtFreX.RestClient.NET.Flow
@@ -7,6 +8,8 @@ namespace NtFreX.RestClient.NET.Flow
     {
         private readonly int _weight;
         private readonly WeightRateLimitedFunctionConfiguration _configuration;
+
+        private readonly SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1);
 
         protected WeightRateLimitedFunctionBase(FunctionBaseDecorator func, int weight, WeightRateLimitedFunctionConfiguration configuration)
             : this(func, weight, configuration, args => Task.FromResult(false))
@@ -18,11 +21,26 @@ namespace NtFreX.RestClient.NET.Flow
             _weight = weight;
             _configuration = configuration;
 
-            func.AfterExecution += (sender, objects) => _configuration.AddUsedWeight(weight);
+            func.BeforeExecution += BeforeExecutionHandler;
+        }
+
+        private void BeforeExecutionHandler(object sender, object[] objects)
+        {
+            _configuration.AddUsedWeight(_weight);
+            _semaphoreSlim.Release();
         }
 
         protected override async Task<TimeSpan> CalculateTimeToNextExecutionAsync(object[] arguments)
-            => await Task.FromResult(_configuration.GetLeftWeight() > _weight ? TimeSpan.Zero : TimeSpan.FromSeconds(1));
+        {
+            await _semaphoreSlim.WaitAsync();
+            var difference = _configuration.GetLeftWeight() - _weight;
+            if (difference >= 0)
+            {
+                return TimeSpan.Zero;
+            }
+            _semaphoreSlim.Release();
+            return TimeSpan.FromMilliseconds(10);
+        }
     }
 
     public class WeightRateLimitedFunction<T> : WeightRateLimitedFunctionBase

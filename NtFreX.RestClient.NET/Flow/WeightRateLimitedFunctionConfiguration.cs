@@ -30,7 +30,6 @@ namespace NtFreX.RestClient.NET.Flow
             var leftWeight = TotalWeightPerMinute - usedRate;
             return leftWeight < 0 ? 0 : leftWeight;
         }
-
         public void AddUsedWeight(int weight)
         {
             var timeInSeconds = DateTime.Now.ToUnixTimeSeconds();

@@ -17,6 +17,7 @@ namespace NtFreX.RestClient.NET
 
         public HttpClient HttpClient { get; }
         public event EventHandler<HttpResponseMessage> AfterRequestExecution;
+        public event EventHandler<object[]> BeforeRequestExecution; 
 
         public TimeSpan MinInterval => _timeRatedFunc?.MinInterval ?? TimeSpan.Zero;
         public TimeSpan CachingTime => _cachingFunc?.CachingTime ?? TimeSpan.Zero;
@@ -38,6 +39,7 @@ namespace NtFreX.RestClient.NET
             _uriBuilder = uriBuilder;
 
             retryFunc.AfterExecution += (sender, result) => AfterRequestExecution?.Invoke(this, (HttpResponseMessage) result);
+            retryFunc.BeforeExecution += (sender, objects) => BeforeRequestExecution?.Invoke(this, objects);
 
             HttpClient = httpClient;
         }

@@ -8,16 +8,18 @@ namespace NtFreX.RestClient.NET.Flow
         private readonly FunctionBaseDecorator _funcBase;
         private readonly Func<object[], Task<bool>> _ignoreRateLimitFunc;
 
+        public override event EventHandler<object[]> BeforeExecution;
         public override event EventHandler<object> AfterExecution;
 
         protected RateLimitedFunctionBase(FunctionBaseDecorator funcBase, Func<object[], Task<bool>> ignoreRateLimitFunc)
         {
             _funcBase = funcBase;
             _ignoreRateLimitFunc = ignoreRateLimitFunc;
-
-            _funcBase.AfterExecution += (sender, objects) => AfterExecution?.Invoke(sender, objects);
+            
+            _funcBase.BeforeExecution += (sender, objects) => BeforeExecution?.Invoke(sender, objects);
+            _funcBase.AfterExecution += (sender, o) => AfterExecution?.Invoke(sender, o);
         }
-
+        
         protected abstract Task<TimeSpan> CalculateTimeToNextExecutionAsync(object[] arguments);
 
         public override async Task<object> ExecuteInnerAsync(object[] arguments)

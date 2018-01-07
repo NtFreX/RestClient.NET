@@ -9,7 +9,8 @@ namespace NtFreX.RestClient.NET.Flow
         private readonly int _maxRetryCount;
         private readonly Func<object, bool> _retryOnResult;
         private readonly Func<Exception, bool> _retryOnException;
-        
+
+        public override event EventHandler<object[]> BeforeExecution;
         public override event EventHandler<object> AfterExecution;
 
         protected RetryFunctionBase(FunctionBaseDecorator funcBase, int maxRetryCount, Func<object, bool> retryOnResult, Func<Exception, bool> retryOnException)
@@ -19,6 +20,7 @@ namespace NtFreX.RestClient.NET.Flow
             _retryOnResult = retryOnResult;
             _retryOnException = retryOnException;
 
+            _funcBase.BeforeExecution += (sender, objects) => BeforeExecution?.Invoke(sender, objects);
             _funcBase.AfterExecution += (sender, objects) => AfterExecution?.Invoke(sender, objects);
         }
 

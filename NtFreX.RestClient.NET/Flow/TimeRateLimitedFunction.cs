@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace NtFreX.RestClient.NET.Flow
@@ -9,6 +10,8 @@ namespace NtFreX.RestClient.NET.Flow
 
         private DateTime _lastExecution;
 
+        private readonly SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1);
+
         protected TimeRateLimitedFunctionBase(FunctionBaseDecorator func, TimeSpan minInterval)
             : this(func, minInterval, args => Task.FromResult(false)) { }
 
@@ -18,18 +21,49 @@ namespace NtFreX.RestClient.NET.Flow
             MinInterval = minInterval;
             _lastExecution = DateTime.MinValue;
 
-            func.AfterExecution += (sender, objects) => _lastExecution = DateTime.Now;
+            func.BeforeExecution += BeforeExecutionHandler;
+        }
+
+        private void BeforeExecutionHandler(object sender, object[] objects)
+        {
+            _lastExecution = DateTime.Now;
+            _semaphoreSlim.Release();
         }
 
         protected override async Task<TimeSpan> CalculateTimeToNextExecutionAsync(object[] arguments)
         {
-            var difference = _lastExecution - DateTime.Now - MinInterval;
-            return await Task.FromResult(difference > TimeSpan.Zero ? difference : TimeSpan.Zero);
+            await _semaphoreSlim.WaitAsync();
+            var difference = DateTime.Now - _lastExecution;
+            if (difference > MinInterval)
+            {
+                return TimeSpan.Zero;
+            }
+            _semaphoreSlim.Release();
+            return MinInterval - difference;
         }
     }
 
+    public class TimeRateLimitedFunction : TimeRateLimitedFunctionBase
+    {
+        public TimeRateLimitedFunction(Action func, TimeSpan minAllowedInterval)
+            : base(new Function(func), minAllowedInterval) { }
+
+        public TimeRateLimitedFunction(FunctionBaseDecorator func, TimeSpan minAllowedInterval)
+            : base(func, minAllowedInterval) { }
+
+        public TimeRateLimitedFunction(FunctionBaseDecorator func, TimeSpan minAllowedInterval, Func<bool> doNotRateLimitWhen)
+            : base(func, minAllowedInterval, async args => await Task.FromResult(doNotRateLimitWhen())) { }
+
+        public void Execute()
+            => ExecuteInnerAsync(null).GetAwaiter().GetResult();
+        public TimeSpan GetTimeToNextExecution()
+            => GetTimeToNextExecutionAsync(null).GetAwaiter().GetResult();
+    }
     public class TimeRateLimitedFunction<T> : TimeRateLimitedFunctionBase
     {
+        public TimeRateLimitedFunction(Func<T> func, TimeSpan minAllowedInterval)
+            : base(new Function<T>(func), minAllowedInterval) { }
+
         public TimeRateLimitedFunction(FunctionBaseDecorator func, TimeSpan minAllowedInterval)
             : base(func, minAllowedInterval) { }
 
@@ -44,6 +78,12 @@ namespace NtFreX.RestClient.NET.Flow
 
     public class AsyncTimeRateLimitedFunction : TimeRateLimitedFunctionBase
     {
+        public AsyncTimeRateLimitedFunction(Func<Task> func, TimeSpan minAllowedInterval)
+            : base(new AsyncFunction(func), minAllowedInterval) { }
+
+        public AsyncTimeRateLimitedFunction(Func<Task> func, TimeSpan minAllowedInterval, Func<Task<bool>> doNotRateLimitWhen)
+            : this(new AsyncFunction(func), minAllowedInterval, doNotRateLimitWhen) { }
+
         public AsyncTimeRateLimitedFunction(FunctionBaseDecorator func, TimeSpan minAllowedInterval)
             : base(func, minAllowedInterval) { }
 
@@ -57,6 +97,12 @@ namespace NtFreX.RestClient.NET.Flow
     }
     public class AsyncTimeRateLimitedFunction<T> : TimeRateLimitedFunctionBase
     {
+        public AsyncTimeRateLimitedFunction(Func<Task<T>> func, TimeSpan minAllowedInterval)
+            : base(new AsyncFunction<T>(func), minAllowedInterval) { }
+
+        public AsyncTimeRateLimitedFunction(Func<Task<T>> func, TimeSpan minAllowedInterval, Func<Task<bool>> doNotRateLimitWhen)
+            : this(new AsyncFunction<T>(func), minAllowedInterval, doNotRateLimitWhen) { }
+
         public AsyncTimeRateLimitedFunction(FunctionBaseDecorator func, TimeSpan minAllowedInterval)
             : base(func, minAllowedInterval) { }
 
@@ -70,6 +116,12 @@ namespace NtFreX.RestClient.NET.Flow
     }
     public class AsyncTimeRateLimitedFunction<TArg1, TResult> : TimeRateLimitedFunctionBase
     {
+        public AsyncTimeRateLimitedFunction(Func<TArg1, Task<TResult>> func, TimeSpan minAllowedInterval)
+            : base(new AsyncFunction<TArg1, TResult>(func), minAllowedInterval) { }
+
+        public AsyncTimeRateLimitedFunction(Func<TArg1, Task<TResult>> func, TimeSpan minAllowedInterval, Func<TArg1, Task<bool>> doNotRateLimitWhen)
+            : this(new AsyncFunction<TArg1, TResult>(func), minAllowedInterval, doNotRateLimitWhen) { }
+        
         public AsyncTimeRateLimitedFunction(FunctionBaseDecorator func, TimeSpan minAllowedInterval)
             : base(func, minAllowedInterval) { }
 
@@ -83,6 +135,12 @@ namespace NtFreX.RestClient.NET.Flow
     }
     public class AsyncTimeRateLimitedFunction<TArg1, TArg2, TResult> : TimeRateLimitedFunctionBase
     {
+        public AsyncTimeRateLimitedFunction(Func<TArg1, TArg2, Task<TResult>> func, TimeSpan minAllowedInterval)
+            : base(new AsyncFunction<TArg1, TArg2, TResult>(func), minAllowedInterval) { }
+
+        public AsyncTimeRateLimitedFunction(Func<TArg1, TArg2, Task<TResult>> func, TimeSpan minAllowedInterval, Func<TArg1, TArg2, Task<bool>> doNotRateLimitWhen)
+            : this(new AsyncFunction<TArg1, TArg2, TResult>(func), minAllowedInterval, doNotRateLimitWhen) { }
+
         public AsyncTimeRateLimitedFunction(FunctionBaseDecorator func, TimeSpan minAllowedInterval)
             : base(func, minAllowedInterval) { }
 
@@ -96,6 +154,12 @@ namespace NtFreX.RestClient.NET.Flow
     }
     public class AsyncTimeRateLimitedFunction<TArg1, TArg2, TArg3, TResult> : TimeRateLimitedFunctionBase
     {
+        public AsyncTimeRateLimitedFunction(Func<TArg1, TArg2, TArg3, Task<TResult>> func, TimeSpan minAllowedInterval)
+            : base(new AsyncFunction<TArg1, TArg2, TArg3, TResult>(func), minAllowedInterval) { }
+
+        public AsyncTimeRateLimitedFunction(Func<TArg1, TArg2, TArg3, Task<TResult>> func, TimeSpan minAllowedInterval, Func<TArg1, TArg2, TArg3, Task<bool>> doNotRateLimitWhen)
+            : this(new AsyncFunction<TArg1, TArg2, TArg3, TResult>(func), minAllowedInterval, doNotRateLimitWhen) { }
+
         public AsyncTimeRateLimitedFunction(FunctionBaseDecorator func, TimeSpan minAllowedInterval)
             : base(func, minAllowedInterval) { }
 
