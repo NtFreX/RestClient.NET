@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace NtFreX.RestClient.NET.Flow
@@ -8,9 +9,9 @@ namespace NtFreX.RestClient.NET.Flow
     public abstract class CachedFunctionBase : FunctionBaseDecorator
     {
         private readonly FunctionBaseDecorator _funcBase;
-
-        private readonly object _lastResultsLock = new object();
+        
         private readonly List<(DateTime DateTime, object[] Arguments, object Result)> _lastResults;
+        private readonly SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1);
 
         public TimeSpan CachingTime { get; }
         public override event EventHandler<object> AfterExecution;
@@ -26,7 +27,7 @@ namespace NtFreX.RestClient.NET.Flow
 
             CachingTime = minAllowedInterval;
         }
-
+        
         protected bool HasCachedInner(object[] arguments, out (DateTime DateTime, object[] Arguments, object Result)? lastResult)
         {
             lastResult = null;
@@ -50,30 +51,37 @@ namespace NtFreX.RestClient.NET.Flow
                 });
             }
 
-            return lastResult != null && lastResult.Value.DateTime != DateTime.MinValue;
+            var hasResult = lastResult != null && lastResult.Value.DateTime != DateTime.MinValue;
+            if (!hasResult)
+                return false;
+
+            var isResultValid = CachingTime == TimeSpan.MaxValue ||
+                                lastResult.Value.DateTime >= DateTime.Now - CachingTime;
+            return isResultValid;
         }
 
         public override async Task<object> ExecuteInnerAsync(object[] arguments)
         {
-            lock (_lastResultsLock)
+            await _semaphoreSlim.WaitAsync();
+            if (HasCachedInner(arguments, out var cachedResult))
             {
-                var hasCached = HasCachedInner(arguments, out var cachedResult);
-
-                if (hasCached && (CachingTime == TimeSpan.MaxValue ||
-                                  cachedResult.Value.DateTime >= DateTime.Now - CachingTime))
-                {
-                    return cachedResult.Value.Result;
-                }
-                else if (hasCached)
-                {
-                    _lastResults.Remove(cachedResult.Value);
-                }
+                _semaphoreSlim.Release();
+                return cachedResult.Value.Result;
             }
+            if(cachedResult.HasValue && cachedResult.Value.DateTime != default(DateTime))
+            {
+                _lastResults.Remove(cachedResult.Value);
+            }
+            _semaphoreSlim.Release();
+
             var result = await _funcBase.ExecuteInnerAsync(arguments);
-            lock (_lastResultsLock)
+
+            await _semaphoreSlim.WaitAsync();
+            if (!HasCachedInner(arguments, out var _))
             {
                 _lastResults.Add((DateTime.Now, arguments, result));
             }
+            _semaphoreSlim.Release();
             return result;
         }
     }
