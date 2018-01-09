@@ -29,6 +29,15 @@ namespace NtFreX.RestClient.NET.Test
             Assert.True(fnc.HasCached());
             Assert.Equal(firstResult, fnc.Execute());
 
+            Assert.True(fnc.HasCached());
+            Assert.Equal(firstResult, fnc.Execute());
+
+            Assert.True(fnc.HasCached());
+            Assert.Equal(firstResult, fnc.Execute());
+
+            Assert.True(fnc.HasCached());
+            Assert.Equal(firstResult, fnc.Execute());
+
             Thread.Sleep(cachingTime + TimeSpan.FromSeconds(1));
 
             Assert.False(fnc.HasCached());

@@ -52,10 +52,7 @@ namespace NtFreX.RestClient.NET.Sample
                     //})));
 
                     Console.WriteLine(await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.Account));
-                    foreach (var symbol in symbols)
-                    {
-                        Console.WriteLine(await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.MyTrades, symbol));
-                    }
+                    await Task.WhenAll(symbols.Select(symbol => Task.Run(async () => Console.WriteLine(await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.MyTrades, symbol)))));
                 }
             }
             catch

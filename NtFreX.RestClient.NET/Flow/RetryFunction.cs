@@ -52,6 +52,9 @@ namespace NtFreX.RestClient.NET.Flow
 
     public class AsyncRetryFunction<T> : RetryFunctionBase
     {
+        public AsyncRetryFunction(Func<Task<T>> func, int maxRetryCount, Func<T, bool> retryOnResult, Func<Exception, bool> retryOnException)
+            : this(new AsyncFunction<T>(func), maxRetryCount, retryOnResult, retryOnException) { }
+
         public AsyncRetryFunction(FunctionBaseDecorator func, int maxRetryCount, Func<T, bool> retryOnResult, Func<Exception, bool> retryOnException)
             : base(func, maxRetryCount, arg => retryOnResult((T)arg), retryOnException) { }
 
@@ -60,6 +63,9 @@ namespace NtFreX.RestClient.NET.Flow
     }
     public class AsyncRetryFunction<TArg1, TResult> : RetryFunctionBase
     {
+        public AsyncRetryFunction(Func<TArg1, Task<TResult>> func, int maxRetryCount, Func<TResult, bool> retryOnResult, Func<Exception, bool> retryOnException)
+            : this(new AsyncFunction<TArg1, TResult>(func), maxRetryCount, retryOnResult, retryOnException) { }
+
         public AsyncRetryFunction(FunctionBaseDecorator func, int maxRetryCount, Func<TResult, bool> retryOnResult, Func<Exception, bool> retryOnException)
             : base(func, maxRetryCount, arg1 => retryOnResult((TResult)arg1), retryOnException) { }
 

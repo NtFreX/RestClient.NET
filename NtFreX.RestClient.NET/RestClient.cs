@@ -19,6 +19,7 @@ namespace NtFreX.RestClient.NET
         public HttpClient HttpClient { get; }
 
         public event EventHandler RateLimitRaised;
+        public event EventHandler<(string EndpointName, object[] Arguments, string Result)> AfterEndpointCalled; 
 
         public RestClient(HttpClient httpClient, int breakedRequestLimitStatusCode, int delayAfterBreakedRequestLimit, Dictionary<string, AdvancedHttpRequest> endpoints)
         {
@@ -45,7 +46,11 @@ namespace NtFreX.RestClient.NET
         }
 
         public async Task<string> CallEndpointAsync(string name, params object[] arguments)
-            => await _endpoints[name].ExecuteAsync(arguments);
+        {
+            var result = await _endpoints[name].ExecuteAsync(arguments);
+            AfterEndpointCalled?.Invoke(this, (name, arguments, result));
+            return result;
+        }
         public async Task<TimeSpan> IsRateLimitedAsync(string name, params object[] arguments)
             => await _endpoints[name].IsRateLimitedAsync(arguments);
         public bool IsCached(string name, params object[] arguments)

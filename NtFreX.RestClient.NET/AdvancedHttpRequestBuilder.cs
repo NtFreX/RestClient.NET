@@ -96,10 +96,6 @@ namespace NtFreX.RestClient.NET
             {
                 decorableFunc = retryFunc = new AsyncRetryFunction<string, HttpResponseMessage>(decorableFunc, _subject.MaxRetryCount, _subject.RetryWhenResult, _subject.RetryWhenException);
             }
-            if (_subject.CachingTime > TimeSpan.Zero)
-            {
-                decorableFunc = cachingFunc = new AsyncCachedFunction<string, HttpResponseMessage>(decorableFunc, _subject.CachingTime);
-            }
             if (_subject.TimeRateLimit > TimeSpan.Zero)
             {
                 decorableFunc = timeRatedFunc = new AsyncTimeRateLimitedFunction<string, HttpResponseMessage>(decorableFunc, _subject.TimeRateLimit, uri => Task.FromResult(cachingFunc?.HasCached(uri) ?? false));
@@ -107,6 +103,10 @@ namespace NtFreX.RestClient.NET
             if (_subject.WeightRateLimit > 0)
             {
                 decorableFunc = weightRatedFunc = new AsyncWeightRateLimitedFunction<string, HttpResponseMessage>(decorableFunc, _subject.WeightRateLimit, _subject.WeightRateLimitConfiguration, uri => Task.FromResult(cachingFunc?.HasCached(uri) ?? false));
+            }
+            if (_subject.CachingTime > TimeSpan.Zero)
+            {
+                decorableFunc = cachingFunc = new AsyncCachedFunction<string, HttpResponseMessage>(decorableFunc, _subject.CachingTime);
             }
 
             var func = new Func<string, Task<string>>(async uri =>
