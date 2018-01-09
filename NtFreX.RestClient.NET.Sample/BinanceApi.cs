@@ -1,9 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
-using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
+using System.Security.Cryptography;
+using System.Text;
+
 using NtFreX.RestClient.NET.Extensions;
 using NtFreX.RestClient.NET.Flow;
 
@@ -11,184 +11,107 @@ namespace NtFreX.RestClient.NET.Sample
 {
     public class BinanceApi : IDisposable
     {
-        private readonly RestClient _restClient;
+        public RestClient RestClient { get; }
 
         public event EventHandler RateLimitRaised;
 
-        public BinanceApi()
+        public BinanceApi(string binanceApiKey, string binanceApiKeySecret)
         {
             int[] statusCodesToRetry = { 500, 520 };
             var retryStrategy = new RetryStrategy(
-                maxTries: 3, 
-                retryWhenResult: message => statusCodesToRetry.Contains((int)message.StatusCode), 
+                maxTries: 3,
+                retryWhenResult: message => statusCodesToRetry.Contains((int)message.StatusCode),
                 retryWhenException: exception => true);
+            var weightRateLimitConfig = new WeightRateLimitedFunctionConfiguration(1000);
+            var signatureParameterFunc = new Func<object[], Uri, (string, string)>((args, uri) =>
+            {
+                var encryptor = new HMACSHA256(Encoding.UTF8.GetBytes(binanceApiKeySecret));
+                var signature = ByteToString(encryptor.ComputeHash(Encoding.UTF8.GetBytes(uri.Query.Replace("?", ""))));
+                return ("signature", signature);
+            });
 
-            _restClient = new RestClientBuilder()
+            RestClient = new RestClientBuilder()
                 .WithHttpClient(new HttpClient())
                 .HandleRateLimitStatusCode(419, 5000)
-                .AddEndpoint(BinanceApiEndpointNames.ExchangeInfo, builder => builder
-                    .WithUriBuilder(_ => Task.FromResult("https://www.binance.com/api/v1/exchangeInfo"))
-                    .Cache(TimeSpan.FromDays(1))
-                    .TimeRateLime(TimeSpan.FromSeconds(1))
+                .AddEndpoint(BinanceApiEndpointNames.Ping, builder => builder
+                    .BaseUri("https://www.binance.com/api/v1/ping")
+                    .WeightRateLimit(1, weightRateLimitConfig)
                     .Retry(retryStrategy))
-                .AddEndpoint(BinanceApiEndpointNames.AggregatedTrades, builder => builder
-                    .WithUriBuilder(args => Task.FromResult($"https://www.binance.com/api/v1/aggTrades?symbol={args[0]}&startTime={((DateTime)args[1]).ToUnixTimeMilliseconds()}&endTime={((DateTime)args[2]).ToUnixTimeMilliseconds()}"))
-                    .TimeRateLime(TimeSpan.FromSeconds(1))
-                    .Cache(TimeSpan.MaxValue)
+                .AddEndpoint(BinanceApiEndpointNames.Time, builder => builder
+                    .BaseUri("https://www.binance.com/api/v1/time")
+                    .WeightRateLimit(1, weightRateLimitConfig)
+                    .Retry(retryStrategy))
+                .AddEndpoint(BinanceApiEndpointNames.ExchangeInfo, builder => builder
+                    .BaseUri("https://www.binance.com/api/v1/exchangeInfo")
+                    .WeightRateLimit(1, weightRateLimitConfig)
+                    .Cache(TimeSpan.FromHours(1))
                     .Retry(retryStrategy))
                 .AddEndpoint(BinanceApiEndpointNames.Trades, builder => builder
-                    .WithUriBuilder(args => Task.FromResult($"https://www.binance.com/api/v1/trades?symbol={args[0]}"))
-                    .TimeRateLime(TimeSpan.FromSeconds(1))
+                    .BaseUri("https://www.binance.com/api/v1/trades")
+                    .AddQueryStringParam((arguments, uri) => ("symbol", arguments[0].ToString()))
+                    .WeightRateLimit(1, weightRateLimitConfig)
+                    .Retry(retryStrategy))
+                .AddEndpoint(BinanceApiEndpointNames.HistoricalTrades, builder => builder
+                    .BaseUri("https://www.binance.com/api/v1/historicalTrades")
+                    .AddQueryStringParam((arguments, uri) => ("symbol", arguments[0].ToString()))
+                    .AddQueryStringParam((arguments, uri) => ("limit", arguments[1].ToString()))
+                    .AddQueryStringParam((arguments, uri) => ("fromId", arguments[2].ToString()))
+                    .WeightRateLimit(100, weightRateLimitConfig)
+                    .Cache(TimeSpan.MaxValue)
+                    .Retry(retryStrategy))
+                .AddEndpoint(BinanceApiEndpointNames.AggregatedTrades, builder => builder
+                    .BaseUri("https://www.binance.com/api/v1/aggTrades")
+                    .AddQueryStringParam((arguments, uri) => ("symbol", arguments[0].ToString()))
+                    .AddQueryStringParam((arguments, uri) => ("startTime", ((DateTime)arguments[1]).ToUnixTimeMilliseconds().ToString()))
+                    .AddQueryStringParam((arguments, uri) => ("endTime", ((DateTime)arguments[2]).ToUnixTimeMilliseconds().ToString()))
+                    .WeightRateLimit(1, weightRateLimitConfig)
+                    .Cache(TimeSpan.MaxValue)
+                    .Retry(retryStrategy))
+                .AddEndpoint(BinanceApiEndpointNames.Account, builder => builder
+                    .BaseUri("https://www.binance.com/api/v3/account")
+                    .AddQueryStringParam((arguments, uri) => ("timestamp", DateTime.UtcNow.AddSeconds(-1).ToUnixTimeMilliseconds().ToString()))
+                    .AddQueryStringParam(signatureParameterFunc)
+                    .AddHeader(() => ("X-MBX-APIKEY", binanceApiKey))
+                    .WeightRateLimit(1, weightRateLimitConfig)
+                    .Retry(retryStrategy))
+                .AddEndpoint(BinanceApiEndpointNames.MyTrades, builder => builder
+                    .BaseUri("https://www.binance.com/api/v3/myTrades")
+                    .AddQueryStringParam((arguments, uri) => ("symbol", arguments[0].ToString()))
+                    .AddQueryStringParam((arguments, uri) => ("timestamp", DateTime.UtcNow.AddSeconds(-1).ToUnixTimeMilliseconds().ToString()))
+                    .AddQueryStringParam(signatureParameterFunc)
+                    .AddHeader(() => ("X-MBX-APIKEY", binanceApiKey))
+                    .WeightRateLimit(1, weightRateLimitConfig)
                     .Retry(retryStrategy))
                 .Build();
-            
-            _restClient.RateLimitRaised += (sender, args) => RateLimitRaised?.Invoke(sender, args);
-            
-            GetExchangeSymbols = new AsyncCachedFunction<List<string>>(GetExchangeSymbolsAsync, _restClient.CachingTime[BinanceApiEndpointNames.ExchangeInfo]);
-            GetExchangeRate = new AsyncTimeRateLimitedFunction<string, string, DateTime, double>(GetExchangeRateAsync, _restClient.MinInterval[BinanceApiEndpointNames.AggregatedTrades], DoNotRateLimitGetExchangeRateAsync);
 
-            _getSupportedSymbol = new AsyncCachedFunction<string, string, string>(GetSupportedSymbolAsync, _restClient.CachingTime[BinanceApiEndpointNames.ExchangeInfo]);
+            RestClient.RateLimitRaised += (sender, args) => RateLimitRaised?.Invoke(sender, args);
         }
 
-        #region Public
-        public readonly AsyncTimeRateLimitedFunction<string, string, DateTime, double> GetExchangeRate;
-        private async Task<double> GetExchangeRateAsync(string originCurrency, string targetCurrency, DateTime dateTime)
+        private string ByteToString(byte[] buff)
         {
-            var startAndEnd = GetStartAndEndForGetExchangeRate(dateTime);
-            var symbol = await _getSupportedSymbol.ExecuteAsync(originCurrency, targetCurrency);
-            var searchInMiliseconds = dateTime.ToUnixTimeMilliseconds();
-
-            var trades = await _restClient.CallEndpointAsync(BinanceApiEndpointNames.AggregatedTrades, symbol, startAndEnd.Start, startAndEnd.End);
-            var amount = GetNearestPrice(searchInMiliseconds, trades, items => items.Value<long>("T"), items => items.Value<double>("p"), false);
-            if (amount != null)
-                return amount.Value;
-
-            //TODO: is this needed because no aggregated trades exists allready ??
-            trades = await _restClient.CallEndpointAsync(BinanceApiEndpointNames.Trades, symbol);
-            amount = GetNearestPrice(searchInMiliseconds, trades, items => items.Value<long>("time"), items => items.Value<double>("price"), true);
-            if (amount != null)
-                return amount.Value;
-
-            throw new Exception($"No exchange rate for `{symbol}` on `{dateTime}` found.");
-        }
-        private double? GetNearestPrice(long dateTimeInMiliseconds, string jsonArray, Func<JObject, long> dateTimeSelector, Func<JObject, double> priceSelector, bool searchAll)
-        {
-            var maxTradeOffset = 3600000;
-            var lastTradeTime = 0L;
-            var lastTradePrice = 0.0;
-            var bestTradePrice = 0.0;
-            var bestTradeDifference = long.MaxValue;
-            foreach (var trade in JArray.Parse(jsonArray))
+            var value = "";
+            foreach (var b in buff)
             {
-                var items = trade as JObject;
-                if (items == null)
-                    continue;
-
-                var tradeTime = dateTimeSelector(items);
-                var tradePrice = priceSelector(items);
-
-                if (searchAll)
-                {
-                    var tradeDifference = tradeTime - dateTimeInMiliseconds;
-                    if (tradeDifference < bestTradeDifference)
-                    {
-                        bestTradeDifference = tradeDifference;
-                        bestTradePrice = tradePrice;
-                    }
-                }
-                else if (tradeTime > dateTimeInMiliseconds)
-                {
-                    var tradeDifference = tradeTime - dateTimeInMiliseconds;
-                    var lastTradeDifference = (lastTradeTime - dateTimeInMiliseconds) * -1;
-                    if (tradeDifference > lastTradeDifference)
-                    {
-                        if (lastTradeDifference >= maxTradeOffset)
-                            throw new Exception($"The found exchange rate for is `{lastTradeDifference}` miliseconds older then the searched one.");
-                        return lastTradePrice;
-                    }
-
-                    if (tradeDifference >= maxTradeOffset)
-                        throw new Exception($"The found exchange rate for is `{tradeDifference}` miliseconds newer then the searched one.");
-                    if (tradeDifference < lastTradeDifference)
-                    {
-                        return tradePrice;
-                    }
-                    return tradePrice;
-                }
-
-                lastTradeTime = tradeTime;
-                lastTradePrice = tradePrice;
+                value += b.ToString("X2");
             }
-
-            if (searchAll)
-            {
-                if (bestTradeDifference >= maxTradeOffset)
-                    throw new Exception($"The found exchange rate for is `{bestTradeDifference}` miliseconds older then the searched one.");
-                return bestTradePrice;
-            }
-
-            if (lastTradeTime == 0)
-                return null;
-
-            var lastTradeOffset = (lastTradeTime - dateTimeInMiliseconds) * -1;
-            if (lastTradeOffset >= maxTradeOffset)
-                throw new Exception($"The found exchange rate for is `{lastTradeOffset}` miliseconds older then the searched one.");
-
-            return null;
+            return value;
         }
-        private async Task<bool> DoNotRateLimitGetExchangeRateAsync(string originCurrency, string targetCurrency, DateTime dateTime)
+
+        public static class BinanceApiEndpointNames
         {
-            var startAndEnd = GetStartAndEndForGetExchangeRate(dateTime);
-            var symbol = await _getSupportedSymbol.ExecuteAsync(originCurrency, targetCurrency);
-            return _restClient.IsCached(BinanceApiEndpointNames.AggregatedTrades, symbol, startAndEnd.Start, startAndEnd.End);
-        }
-        private (DateTime Start, DateTime End) GetStartAndEndForGetExchangeRate(DateTime dateTime)
-            => (dateTime.AddMinutes(-5), dateTime.AddMinutes(5));
-
-        public readonly AsyncCachedFunction<List<string>> GetExchangeSymbols;
-        private async Task<List<string>> GetExchangeSymbolsAsync()
-        {
-            var response = await _restClient.CallEndpointAsync(BinanceApiEndpointNames.ExchangeInfo);
-            var json = JObject.Parse(response);
-            return json.Value<JArray>("symbols").Select(x =>
-            {
-                var obj = x as JObject;
-                return obj?.Value<string>("symbol");
-            }).ToList();
+            public static string Ping { get; } = nameof(Ping);
+            public static string Time { get; } = nameof(Time);
+            public static string ExchangeInfo { get; } = nameof(ExchangeInfo);
+            public static string Trades { get; } = nameof(Trades);
+            public static string HistoricalTrades { get; } = nameof(HistoricalTrades);
+            public static string AggregatedTrades { get; } = nameof(AggregatedTrades);
+            public static string Account { get; } = nameof(Account);
+            public static string MyTrades { get; } = nameof(MyTrades);
         }
 
-        public async Task<bool> DoExchangeRatesExistAsync(string originCurrency, string targetCurrency)
-            => !string.IsNullOrEmpty(await _getSupportedSymbol.ExecuteAsync(originCurrency, targetCurrency));
-        #endregion
-
-        #region Private
-        private readonly AsyncCachedFunction<string, string, string> _getSupportedSymbol;
-        private async Task<string> GetSupportedSymbolAsync(string originCurrency, string targetCurrency)
-        {
-            var exchangeRateSymbols = await GetExchangeSymbols.ExecuteAsync();
-            exchangeRateSymbols = exchangeRateSymbols.Select(x => x.ToUpper()).ToList();
-            if (exchangeRateSymbols.Contains(originCurrency + targetCurrency))
-            {
-                return originCurrency + targetCurrency;
-            }
-            if (exchangeRateSymbols.Contains(targetCurrency + originCurrency))
-            {
-                return targetCurrency + originCurrency;
-            }
-            return null;
-        }
-        #endregion
-        
         public void Dispose()
         {
-            _restClient?.Dispose();
-        }
-
-        private static class BinanceApiEndpointNames
-        {
-            public static string ExchangeInfo { get; } = nameof(ExchangeInfo);
-            public static string AggregatedTrades { get; } = nameof(AggregatedTrades);
-            public static string Trades { get; } = nameof(Trades);
+            RestClient?.HttpClient?.Dispose();
         }
     }
 }

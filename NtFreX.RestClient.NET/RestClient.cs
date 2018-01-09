@@ -1,13 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
 using System.Threading.Tasks;
 using NtFreX.RestClient.NET.Helper;
+using System.Net.Http;
 
 namespace NtFreX.RestClient.NET
 {
-    public sealed class RestClient : IDisposable
+    public sealed class RestClient
     {
         private readonly int? _breakedRequestLimitStatusCode;
         private readonly int? _delayAfterBreakedRequestLimit;
@@ -50,10 +50,5 @@ namespace NtFreX.RestClient.NET
             => await _endpoints[name].IsRateLimitedAsync(arguments);
         public bool IsCached(string name, params object[] arguments)
             => _endpoints[name].IsCached(arguments);
-
-        public void Dispose()
-        {
-            HttpClient?.Dispose();
-        }
     }
 }

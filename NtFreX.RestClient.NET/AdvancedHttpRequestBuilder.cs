@@ -1,6 +1,7 @@
 ﻿using System;
-using System.Net.Http;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Net.Http;
 using NtFreX.RestClient.NET.Flow;
 
 namespace NtFreX.RestClient.NET
@@ -16,7 +17,6 @@ namespace NtFreX.RestClient.NET
             _subject.RetryWhenException = retryWhenException;
             return this;
         }
-
         public AdvancedHttpRequestBuilder Retry(RetryStrategy retryStrategy)
         {
             _subject.MaxRetryCount = retryStrategy.MaxRetries;
@@ -24,35 +24,52 @@ namespace NtFreX.RestClient.NET
             _subject.RetryWhenException = retryStrategy.RetryWhenException;
             return this;
         }
-
         public AdvancedHttpRequestBuilder Cache(TimeSpan cachingTime)
         {
             _subject.CachingTime = cachingTime;
             return this;
         }
-
         public AdvancedHttpRequestBuilder TimeRateLime(TimeSpan maxInterval)
         {
             _subject.TimeRateLimit = maxInterval;
             return this;
         }
-
         public AdvancedHttpRequestBuilder WeightRateLimit(int weight, WeightRateLimitedFunctionConfiguration configuration)
         {
             _subject.WeightRateLimit = weight;
             _subject.WeightRateLimitConfiguration = configuration;
             return this;
         }
-
         public AdvancedHttpRequestBuilder UseHttpClient(HttpClient httpClient)
         {
             _subject.HttpClient = httpClient;
             return this;
         }
-
-        public AdvancedHttpRequestBuilder WithUriBuilder(Func<object[], Task<string>> uriBuilder)
+        public AdvancedHttpRequestBuilder HttpMethod(HttpMethod method)
         {
-            _subject.UriBuilder = uriBuilder;
+            _subject.HttpMethod = method;
+            return this;
+        }
+        public AdvancedHttpRequestBuilder BaseUri(string baseUri)
+        {
+            _subject.BaseUriBuilder = args => baseUri;
+            return this;
+        }
+        public AdvancedHttpRequestBuilder BaseUri(Func<object[], string> baseUriBuilder)
+        {
+            _subject.BaseUriBuilder = baseUriBuilder;
+            return this;
+        }
+        public AdvancedHttpRequestBuilder AddHeader(Func<(string Name, string Value)> headerResolver)
+        {
+            _subject.HeaderResolvers.Add(headerResolver);
+            return this;
+        }
+        public AdvancedHttpRequestBuilder AddQueryStringParam(Func<object[], Uri, (string Name, string Value)> paramResolver)
+            => AddQueryStringParam((args, uri) => Task.FromResult(paramResolver(args, uri)));
+        public AdvancedHttpRequestBuilder AddQueryStringParam(Func<object[], Uri, Task<(string Name, string Value)>> paramResolver)
+        {
+            _subject.QueryStringParameterResolvers.Add(paramResolver);
             return this;
         }
 
@@ -66,7 +83,12 @@ namespace NtFreX.RestClient.NET
 
             FunctionBaseDecorator decorableFunc = requestFunc = new AsyncFunction<string, HttpResponseMessage>(async uri =>
             {
-                var request = new HttpRequestMessage(HttpMethod.Get, uri);
+                var request = new HttpRequestMessage(_subject.HttpMethod, uri);
+                foreach (var headerResolver in _subject.HeaderResolvers)
+                {
+                    var header = headerResolver();
+                    request.Headers.Add(header.Name, header.Value);   
+                }
                 return await _subject.HttpClient.SendAsync(request);
             });
 
@@ -101,18 +123,22 @@ namespace NtFreX.RestClient.NET
                 timeRatedFunc,
                 weightRatedFunc,
                 func,
-                _subject.UriBuilder);
+                _subject.QueryStringParameterResolvers,
+                _subject.BaseUriBuilder);
         }
 
         public class AdvancedHttpRequestSubject
         {
+            public HttpMethod HttpMethod { get; set; } = HttpMethod.Get;
+            public Func<object[], string> BaseUriBuilder { get; set; }
             public HttpClient HttpClient { get; set; }
             public int MaxRetryCount { get; set; }
             public TimeSpan CachingTime { get; set; }
             public TimeSpan TimeRateLimit { get; set; }
             public int WeightRateLimit { get; set; }
             public WeightRateLimitedFunctionConfiguration WeightRateLimitConfiguration { get; set; }
-            public Func<object[], Task<string>> UriBuilder { get; set; }
+            public List<Func<object[], Uri, Task<(string Name, string Value)>>> QueryStringParameterResolvers { get; set; } = new List<Func<object[], Uri, Task<(string Name, string Value)>>>();
+            public List<Func<(string Name, string Value)>> HeaderResolvers { get; set; } = new List<Func<(string Name, string Value)>>();
             public Func<HttpResponseMessage, bool> RetryWhenResult { get; set; }
             public Func<Exception, bool> RetryWhenException { get; set; }
         }
