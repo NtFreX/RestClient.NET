@@ -1,7 +1,7 @@
 language: csharp
 solution: NtFreX.RestClient.NET.sln
-mono: latest
 dotnet: latest
+net: latest
 script:
   - dotnet restore
   - dotnet build
