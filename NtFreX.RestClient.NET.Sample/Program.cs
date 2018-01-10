@@ -53,8 +53,8 @@ namespace NtFreX.RestClient.NET.Sample
                         //    Console.WriteLine($"{DateTime.Now} : {currencyOne} - {currencyTwo} = {exchangeRate}");
                         //})));
 
-                        Console.WriteLine(await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.Account));
-                        await Task.WhenAll(symbols.Select(symbol => Task.Run(async () => Console.WriteLine(await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.MyTrades, symbol)))));
+                        Console.WriteLine(await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.Time));
+                        await Task.WhenAll(symbols.Select(symbol => Task.Run(async () => Console.WriteLine(await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.Trades, symbol)))));
                     }
                 }
             }

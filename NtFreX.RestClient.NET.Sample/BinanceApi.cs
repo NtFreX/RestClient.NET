@@ -3,7 +3,8 @@ using System.Linq;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
-
+using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 using NtFreX.RestClient.NET.Extensions;
 using NtFreX.RestClient.NET.Flow;
 
@@ -11,52 +12,52 @@ namespace NtFreX.RestClient.NET.Sample
 {
     public class BinanceApi : IDisposable
     {
+        private readonly string _binanceApiKeySecret;
+
         public RestClient RestClient { get; }
+        public WeightRateLimitedFunctionConfiguration RequestWeightRateLimitConfig { get; } = new WeightRateLimitedFunctionConfiguration(1200);
 
         public event EventHandler RateLimitRaised;
 
         public BinanceApi(string binanceApiKey, string binanceApiKeySecret)
         {
+            _binanceApiKeySecret = binanceApiKeySecret;
+
             int[] statusCodesToRetry = { 500, 520 };
             var retryStrategy = new RetryStrategy(
                 maxTries: 3,
                 retryWhenResult: message => statusCodesToRetry.Contains((int)message.StatusCode),
                 retryWhenException: exception => true);
-            var weightRateLimitConfig = new WeightRateLimitedFunctionConfiguration(1000);
-            var signatureParameterFunc = new Func<object[], Uri, (string, string)>((args, uri) =>
-            {
-                var encryptor = new HMACSHA256(Encoding.UTF8.GetBytes(binanceApiKeySecret));
-                var signature = ByteToString(encryptor.ComputeHash(Encoding.UTF8.GetBytes(uri.Query.Replace("?", ""))));
-                return ("signature", signature);
-            });
+            var signatureParameterFunc = new Func<object[], Uri, (string Name, string Value)>(GetSignatureQueryStringParam);
 
             RestClient = new RestClientBuilder()
                 .WithHttpClient(new HttpClient())
                 .HandleRateLimitStatusCode(419, 5000)
                 .AddEndpoint(BinanceApiEndpointNames.Ping, builder => builder
                     .BaseUri("https://www.binance.com/api/v1/ping")
-                    .WeightRateLimit(1, weightRateLimitConfig)
+                    .WeightRateLimit(1, RequestWeightRateLimitConfig)
                     .Retry(retryStrategy))
                 .AddEndpoint(BinanceApiEndpointNames.Time, builder => builder
                     .BaseUri("https://www.binance.com/api/v1/time")
-                    .WeightRateLimit(1, weightRateLimitConfig)
+                    .WeightRateLimit(1, RequestWeightRateLimitConfig)
                     .Retry(retryStrategy))
                 .AddEndpoint(BinanceApiEndpointNames.ExchangeInfo, builder => builder
                     .BaseUri("https://www.binance.com/api/v1/exchangeInfo")
-                    .WeightRateLimit(1, weightRateLimitConfig)
+                    .WeightRateLimit(1, RequestWeightRateLimitConfig)
                     .Cache(TimeSpan.FromHours(1))
-                    .Retry(retryStrategy))
+                    .Retry(retryStrategy)
+                    .AfterExecution(ApplyRateLimitsAsync))
                 .AddEndpoint(BinanceApiEndpointNames.Trades, builder => builder
                     .BaseUri("https://www.binance.com/api/v1/trades")
                     .AddQueryStringParam((arguments, uri) => ("symbol", arguments[0].ToString()))
-                    .WeightRateLimit(1, weightRateLimitConfig)
+                    .WeightRateLimit(1, RequestWeightRateLimitConfig)
                     .Retry(retryStrategy))
                 .AddEndpoint(BinanceApiEndpointNames.HistoricalTrades, builder => builder
                     .BaseUri("https://www.binance.com/api/v1/historicalTrades")
                     .AddQueryStringParam((arguments, uri) => ("symbol", arguments[0].ToString()))
                     .AddQueryStringParam((arguments, uri) => ("limit", arguments[1].ToString()))
                     .AddQueryStringParam((arguments, uri) => ("fromId", arguments[2].ToString()))
-                    .WeightRateLimit(100, weightRateLimitConfig)
+                    .WeightRateLimit(100, RequestWeightRateLimitConfig)
                     .Cache(TimeSpan.MaxValue)
                     .Retry(retryStrategy))
                 .AddEndpoint(BinanceApiEndpointNames.AggregatedTrades, builder => builder
@@ -64,7 +65,7 @@ namespace NtFreX.RestClient.NET.Sample
                     .AddQueryStringParam((arguments, uri) => ("symbol", arguments[0].ToString()))
                     .AddQueryStringParam((arguments, uri) => ("startTime", ((DateTime)arguments[1]).ToUnixTimeMilliseconds().ToString()))
                     .AddQueryStringParam((arguments, uri) => ("endTime", ((DateTime)arguments[2]).ToUnixTimeMilliseconds().ToString()))
-                    .WeightRateLimit(1, weightRateLimitConfig)
+                    .WeightRateLimit(1, RequestWeightRateLimitConfig)
                     .Cache(TimeSpan.MaxValue)
                     .Retry(retryStrategy))
                 .AddEndpoint(BinanceApiEndpointNames.Account, builder => builder
@@ -72,7 +73,7 @@ namespace NtFreX.RestClient.NET.Sample
                     .AddQueryStringParam((arguments, uri) => ("timestamp", DateTime.UtcNow.AddSeconds(-1).ToUnixTimeMilliseconds().ToString()))
                     .AddQueryStringParam(signatureParameterFunc)
                     .AddHeader(() => ("X-MBX-APIKEY", binanceApiKey))
-                    .WeightRateLimit(1, weightRateLimitConfig)
+                    .WeightRateLimit(1, RequestWeightRateLimitConfig)
                     .Retry(retryStrategy))
                 .AddEndpoint(BinanceApiEndpointNames.MyTrades, builder => builder
                     .BaseUri("https://www.binance.com/api/v3/myTrades")
@@ -80,11 +81,29 @@ namespace NtFreX.RestClient.NET.Sample
                     .AddQueryStringParam((arguments, uri) => ("timestamp", DateTime.UtcNow.AddSeconds(-1).ToUnixTimeMilliseconds().ToString()))
                     .AddQueryStringParam(signatureParameterFunc)
                     .AddHeader(() => ("X-MBX-APIKEY", binanceApiKey))
-                    .WeightRateLimit(1, weightRateLimitConfig)
+                    .WeightRateLimit(1, RequestWeightRateLimitConfig)
                     .Retry(retryStrategy))
                 .Build();
 
             RestClient.RateLimitRaised += (sender, args) => RateLimitRaised?.Invoke(sender, args);
+        }
+
+        private (string, string) GetSignatureQueryStringParam(object[] args, Uri uri)
+        {
+            var encryptor = new HMACSHA256(Encoding.UTF8.GetBytes(_binanceApiKeySecret));
+            var signature = ByteToString(encryptor.ComputeHash(Encoding.UTF8.GetBytes(uri.Query.Replace("?", ""))));
+            return ("signature", signature);
+        }
+        private async Task ApplyRateLimitsAsync(HttpResponseMessage response)
+        {
+            if (!response.IsSuccessStatusCode)
+                return;
+
+            var content = await response.Content.ReadAsStringAsync();
+            var obj = JObject.Parse(content);
+            var rateLimits = obj.Value<JArray>("rateLimits");
+            var requestRateLimit = rateLimits.First(x => x.Value<string>("rateLimitType") == "REQUESTS");
+            RequestWeightRateLimitConfig.TotalWeightPerMinute = requestRateLimit.Value<int>("limit");
         }
 
         private string ByteToString(byte[] buff)

@@ -72,6 +72,11 @@ namespace NtFreX.RestClient.NET
             _subject.QueryStringParameterResolvers.Add(paramResolver);
             return this;
         }
+        public AdvancedHttpRequestBuilder AfterExecution(Func<HttpResponseMessage, Task> afterExecution)
+        {
+            _subject.AfterExecution = afterExecution;
+            return this;
+        }
 
         public AdvancedHttpRequest Build()
         {
@@ -112,6 +117,8 @@ namespace NtFreX.RestClient.NET
             var func = new Func<string, Task<string>>(async uri =>
             {
                 var result = (HttpResponseMessage)await decorableFunc.ExecuteInnerAsync(new object[] { uri });
+                if(_subject.AfterExecution != null)
+                    await _subject.AfterExecution.Invoke(result);
                 return await result.Content.ReadAsStringAsync();
             });
 
@@ -129,6 +136,7 @@ namespace NtFreX.RestClient.NET
 
         public class AdvancedHttpRequestSubject
         {
+            public Func<HttpResponseMessage, Task> AfterExecution { get; set; }
             public HttpMethod HttpMethod { get; set; } = HttpMethod.Get;
             public Func<object[], string> BaseUriBuilder { get; set; }
             public HttpClient HttpClient { get; set; }
