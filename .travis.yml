@@ -1,2 +1,7 @@
 language: csharp
 solution: NtFreX.RestClient.NET.sln
+mono: none
+script:
+  - dotnet restore
+  - dotnet build
+  - dotnet test
