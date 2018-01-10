@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace NtFreX.RestClient.NET.Flow
@@ -11,7 +10,6 @@ namespace NtFreX.RestClient.NET.Flow
         private readonly FunctionBaseDecorator _funcBase;
         
         private readonly List<(DateTime DateTime, object[] Arguments, object Result)> _lastResults;
-        private readonly SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1);
 
         public TimeSpan CachingTime { get; }
         public override event EventHandler<object> AfterExecution;
@@ -62,26 +60,21 @@ namespace NtFreX.RestClient.NET.Flow
 
         public override async Task<object> ExecuteInnerAsync(object[] arguments)
         {
-            await _semaphoreSlim.WaitAsync();
             if (HasCachedInner(arguments, out var cachedResult))
             {
-                _semaphoreSlim.Release();
                 return cachedResult.Value.Result;
             }
             if(cachedResult.HasValue && cachedResult.Value.DateTime != default(DateTime))
             {
                 _lastResults.Remove(cachedResult.Value);
             }
-            _semaphoreSlim.Release();
 
             var result = await _funcBase.ExecuteInnerAsync(arguments);
-
-            await _semaphoreSlim.WaitAsync();
+            
             if (!HasCachedInner(arguments, out var _))
             {
                 _lastResults.Add((DateTime.Now, arguments, result));
             }
-            _semaphoreSlim.Release();
             return result;
         }
     }
