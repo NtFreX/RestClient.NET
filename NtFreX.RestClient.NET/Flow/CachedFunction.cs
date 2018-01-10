@@ -14,12 +14,14 @@ namespace NtFreX.RestClient.NET.Flow
         public TimeSpan CachingTime { get; }
         public override event EventHandler<object> AfterExecution;
         public override event EventHandler<object[]> BeforeExecution;
+        public override event EventHandler<object[]> ExecutionDelayed;
 
         protected CachedFunctionBase(FunctionBaseDecorator funcBase, TimeSpan minAllowedInterval)
         {
             _funcBase = funcBase;
             _funcBase.AfterExecution += (sender, objects) => AfterExecution?.Invoke(sender, objects);
             _funcBase.BeforeExecution += (sender, objects) => BeforeExecution?.Invoke(sender, objects);
+            _funcBase.ExecutionDelayed += (sender, objects) => ExecutionDelayed?.Invoke(sender, objects);
 
             _lastResults = new List<(DateTime DateTime, object[] Arguments, object Result)>();
 

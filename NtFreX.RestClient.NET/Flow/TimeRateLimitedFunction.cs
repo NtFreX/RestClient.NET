@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace NtFreX.RestClient.NET.Flow
@@ -8,6 +9,8 @@ namespace NtFreX.RestClient.NET.Flow
         public TimeSpan MinInterval { get; }
 
         private DateTime _lastExecution;
+
+        private readonly SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1);
 
         protected TimeRateLimitedFunctionBase(FunctionBaseDecorator func, TimeSpan minInterval)
             : this(func, minInterval, args => Task.FromResult(false)) { }
@@ -19,21 +22,32 @@ namespace NtFreX.RestClient.NET.Flow
             _lastExecution = DateTime.MinValue;
 
             func.BeforeExecution += BeforeExecutionHandler;
+            func.ExecutionDelayed += ExecutionDelayedHandler;
+
+            // ReSharper disable once VirtualMemberCallInConstructor
+            ExecutionDelayed += ExecutionDelayedHandler;
+        }
+
+        private void ExecutionDelayedHandler(object sender, object[] objects)
+        {
+            _semaphoreSlim.Release();
         }
 
         private void BeforeExecutionHandler(object sender, object[] objects)
         {
             _lastExecution = DateTime.Now;
+            _semaphoreSlim.Release();
         }
 
         protected override async Task<TimeSpan> CalculateTimeToNextExecutionAsync(object[] arguments)
         {
+            await _semaphoreSlim.WaitAsync();
             var difference = DateTime.Now - _lastExecution;
             if (difference > MinInterval)
             {
                 return TimeSpan.Zero;
             }
-            return await Task.FromResult(MinInterval - difference);
+            return MinInterval - difference;
         }
     }
 
