@@ -1,3 +1,3 @@
 language: csharp
 solution: NtFreX.RestClient.NET.sln
-dotnet: latest
+dotnet: 2.0.0
