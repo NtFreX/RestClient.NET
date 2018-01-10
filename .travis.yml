@@ -1,6 +1,8 @@
 language: csharp
 solution: NtFreX.RestClient.NET.sln
 mono: none
+sudo: required
+dist: trusty
 script:
   - dotnet restore
   - dotnet build
