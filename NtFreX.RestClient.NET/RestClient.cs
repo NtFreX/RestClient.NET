@@ -12,7 +12,9 @@ namespace NtFreX.RestClient.NET
         private readonly int? _breakedRequestLimitStatusCode;
         private readonly int? _delayAfterBreakedRequestLimit;
         private readonly Dictionary<string, AdvancedHttpRequest> _endpoints;
-        
+
+        private DateTime _blockedUntil = DateTime.MinValue;
+
         public IndexerProperty<string, TimeSpan> MinInterval { get; }
         public IndexerProperty<string, TimeSpan> CachingTime { get; }
 
@@ -41,12 +43,15 @@ namespace NtFreX.RestClient.NET
             if ((int)httpResponseMessage.StatusCode == _breakedRequestLimitStatusCode)
             {
                 RateLimitRaised?.Invoke(this, EventArgs.Empty);
-                Task.Delay(_delayAfterBreakedRequestLimit ?? 0).GetAwaiter().GetResult();
+                _blockedUntil = DateTime.Now + TimeSpan.FromMilliseconds(_delayAfterBreakedRequestLimit ?? 0);
             }
         }
 
         public async Task<string> CallEndpointAsync(string name, params object[] arguments)
         {
+            if (_blockedUntil > DateTime.Now)
+                await Task.Delay(_blockedUntil - DateTime.Now);
+
             var result = await _endpoints[name].ExecuteAsync(arguments);
             AfterEndpointCalled?.Invoke(this, (name, arguments, result));
             return result;

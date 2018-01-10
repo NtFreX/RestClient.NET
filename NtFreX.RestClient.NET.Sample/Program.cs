@@ -39,20 +39,23 @@ namespace NtFreX.RestClient.NET.Sample
                 {
                     binanceApi.RateLimitRaised += (sender, eventArgs) => Console.WriteLine("Rate limit raised!");
 
-                    var exchangeInfo = await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.ExchangeInfo);
-                    var symbols = JObject.Parse(exchangeInfo).Value<JArray>("symbols").Select(x => x.Value<string>("symbol"));
+                    for (int i = 0; i < 100; i++)
+                    {
+                        var exchangeInfo = await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.ExchangeInfo);
+                        var symbols = JObject.Parse(exchangeInfo).Value<JArray>("symbols").Select(x => x.Value<string>("symbol"));
 
-                    //var symbols = await binanceApi.GetExchangeSymbols.ExecuteAsync();
-                    //await Task.WhenAll(symbols.Select(symbol => Task.Run(async () =>
-                    //{
-                    //    var currencyOne = symbol.Substring(0, 3);
-                    //    var currencyTwo = symbol.Substring(3);
-                    //    var exchangeRate = await binanceApi.GetExchangeRate.ExecuteAsync(currencyOne, currencyTwo, DateTime.Now);
-                    //    Console.WriteLine($"{DateTime.Now} : {currencyOne} - {currencyTwo} = {exchangeRate}");
-                    //})));
+                        //var symbols = await binanceApi.GetExchangeSymbols.ExecuteAsync();
+                        //await Task.WhenAll(symbols.Select(symbol => Task.Run(async () =>
+                        //{
+                        //    var currencyOne = symbol.Substring(0, 3);
+                        //    var currencyTwo = symbol.Substring(3);
+                        //    var exchangeRate = await binanceApi.GetExchangeRate.ExecuteAsync(currencyOne, currencyTwo, DateTime.Now);
+                        //    Console.WriteLine($"{DateTime.Now} : {currencyOne} - {currencyTwo} = {exchangeRate}");
+                        //})));
 
-                    Console.WriteLine(await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.Account));
-                    await Task.WhenAll(symbols.Select(symbol => Task.Run(async () => Console.WriteLine(await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.MyTrades, symbol)))));
+                        Console.WriteLine(await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.Account));
+                        await Task.WhenAll(symbols.Select(symbol => Task.Run(async () => Console.WriteLine(await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.MyTrades, symbol)))));
+                    }
                 }
             }
             catch
