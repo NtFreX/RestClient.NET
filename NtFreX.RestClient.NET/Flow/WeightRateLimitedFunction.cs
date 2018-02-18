@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace NtFreX.RestClient.NET.Flow
@@ -7,6 +8,8 @@ namespace NtFreX.RestClient.NET.Flow
     {
         private readonly int _weight;
         private readonly WeightRateLimitedFunctionConfiguration _configuration;
+
+        private readonly SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1);
 
         protected WeightRateLimitedFunctionBase(FunctionBaseDecorator func, int weight, WeightRateLimitedFunctionConfiguration configuration)
             : this(func, weight, configuration, args => Task.FromResult(false))
@@ -18,22 +21,32 @@ namespace NtFreX.RestClient.NET.Flow
             _weight = weight;
             _configuration = configuration;
 
-            func.BeforeExecution += BeforeExecutionHandler;
+            // ReSharper disable once VirtualMemberCallInConstructor
+            BeforeExecution += BeforeExecutionHandler;
+            // ReSharper disable once VirtualMemberCallInConstructor
+            ExecutionDelayed += ExecutionCanceledHandler;
+        }
+
+        private void ExecutionCanceledHandler(object sender, object[] objects)
+        {
+            _semaphoreSlim.Release();
         }
 
         private void BeforeExecutionHandler(object sender, object[] objects)
         {
             _configuration.AddUsedWeight(_weight);
+            _semaphoreSlim.Release();
         }
 
         protected override async Task<TimeSpan> CalculateTimeToNextExecutionAsync(object[] arguments)
         {
+            await _semaphoreSlim.WaitAsync();
             var difference = _configuration.GetLeftWeight() - _weight;
             if (difference >= 0)
             {
                 return TimeSpan.Zero;
             }
-            return await Task.FromResult(TimeSpan.FromMilliseconds(10));
+            return TimeSpan.FromMilliseconds(10);
         }
     }
 

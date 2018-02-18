@@ -11,6 +11,7 @@ namespace NtFreX.RestClient.NET.Flow
 
         public override event EventHandler<object[]> BeforeExecution;
         public override event EventHandler<object> AfterExecution;
+        public override event EventHandler<object[]> ExecutionDelayed;
 
         protected ConcurrentFunctionBase(FunctionBaseDecorator funcBase, int maxConcurrency)
         {
@@ -19,6 +20,7 @@ namespace NtFreX.RestClient.NET.Flow
 
             _funcBase.BeforeExecution += (sender, objects) => BeforeExecution?.Invoke(sender, objects);
             _funcBase.AfterExecution += (sender, objects) => AfterExecution?.Invoke(sender, objects);
+            _funcBase.ExecutionDelayed += (sender, objects) => ExecutionDelayed?.Invoke(sender, objects);
         }
 
         public override async Task<object> ExecuteInnerAsync(object[] arguments)

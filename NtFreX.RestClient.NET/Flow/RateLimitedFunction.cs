@@ -10,6 +10,7 @@ namespace NtFreX.RestClient.NET.Flow
 
         public override event EventHandler<object[]> BeforeExecution;
         public override event EventHandler<object> AfterExecution;
+        public override event EventHandler<object[]> ExecutionDelayed;
 
         protected RateLimitedFunctionBase(FunctionBaseDecorator funcBase, Func<object[], Task<bool>> ignoreRateLimitFunc)
         {
@@ -18,6 +19,7 @@ namespace NtFreX.RestClient.NET.Flow
             
             _funcBase.BeforeExecution += (sender, objects) => BeforeExecution?.Invoke(sender, objects);
             _funcBase.AfterExecution += (sender, o) => AfterExecution?.Invoke(sender, o);
+            _funcBase.ExecutionDelayed += (sender, objects) => ExecutionDelayed?.Invoke(sender, objects);
         }
         
         protected abstract Task<TimeSpan> CalculateTimeToNextExecutionAsync(object[] arguments);
@@ -27,6 +29,7 @@ namespace NtFreX.RestClient.NET.Flow
             TimeSpan rateLimtDelay;
             while ((rateLimtDelay = await GetTimeToNextExecutionAsync(arguments)).Ticks > 0)
             {
+                ExecutionDelayed?.Invoke(this, arguments);
                 await Task.Delay(rateLimtDelay);
             }
 

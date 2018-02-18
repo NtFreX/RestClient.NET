@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
@@ -54,7 +55,11 @@ namespace NtFreX.RestClient.NET.Sample
                         //})));
 
                         Console.WriteLine(await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.Time));
-                        await Task.WhenAll(symbols.Select(symbol => Task.Run(async () => Console.WriteLine(await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.Trades, symbol)))));
+                        var tasks = new List<Task>();
+                        tasks.AddRange(symbols.Select(symbol => Task.Run(async () => Console.WriteLine(await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.Trades, symbol)))));
+                        tasks.AddRange(symbols.Select(symbol => Task.Run(async () => Console.WriteLine(await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.Trades, symbol)))));
+                        tasks.AddRange(symbols.Select(symbol => Task.Run(async () => Console.WriteLine(await binanceApi.RestClient.CallEndpointAsync(BinanceApi.BinanceApiEndpointNames.Trades, symbol)))));
+                        await Task.WhenAll(tasks);
                     }
                 }
             }

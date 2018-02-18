@@ -9,8 +9,8 @@ namespace NtFreX.RestClient.NET
 {
     public sealed class RestClient
     {
-        private readonly int? _breakedRequestLimitStatusCode;
-        private readonly int? _delayAfterBreakedRequestLimit;
+        private readonly Func<HttpResponseMessage, Task<bool>> _rateLimitDetector;
+        private readonly int _delayAfterBreakedRequestLimit;
         private readonly Dictionary<string, AdvancedHttpRequest> _endpoints;
 
         private DateTime _blockedUntil = DateTime.MinValue;
@@ -23,9 +23,9 @@ namespace NtFreX.RestClient.NET
         public event EventHandler RateLimitRaised;
         public event EventHandler<(string EndpointName, object[] Arguments, string Result)> AfterEndpointCalled; 
 
-        public RestClient(HttpClient httpClient, int breakedRequestLimitStatusCode, int delayAfterBreakedRequestLimit, Dictionary<string, AdvancedHttpRequest> endpoints)
+        public RestClient(HttpClient httpClient, Func<HttpResponseMessage, Task<bool>> rateLimitDetector, int delayAfterBreakedRequestLimit, Dictionary<string, AdvancedHttpRequest> endpoints)
         {
-            _breakedRequestLimitStatusCode = breakedRequestLimitStatusCode;
+            _rateLimitDetector = rateLimitDetector;
             _delayAfterBreakedRequestLimit = delayAfterBreakedRequestLimit;
             _endpoints = new Dictionary<string, AdvancedHttpRequest>();
 
@@ -40,10 +40,10 @@ namespace NtFreX.RestClient.NET
 
         private void AfterRequestExecution(object sender, HttpResponseMessage httpResponseMessage)
         {
-            if ((int)httpResponseMessage.StatusCode == _breakedRequestLimitStatusCode)
+            if (_rateLimitDetector(httpResponseMessage).GetAwaiter().GetResult())
             {
                 RateLimitRaised?.Invoke(this, EventArgs.Empty);
-                _blockedUntil = DateTime.Now + TimeSpan.FromMilliseconds(_delayAfterBreakedRequestLimit ?? 0);
+                _blockedUntil = DateTime.Now + TimeSpan.FromMilliseconds(_delayAfterBreakedRequestLimit);
             }
         }
 

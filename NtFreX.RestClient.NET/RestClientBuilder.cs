@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Net.Http;
+using System.Threading.Tasks;
 
 namespace NtFreX.RestClient.NET
 {
@@ -8,12 +9,15 @@ namespace NtFreX.RestClient.NET
     {
         private readonly RestClientSubject _subject = new RestClientSubject();
 
-        public RestClientBuilder HandleRateLimitStatusCode(int statusCode, int delayAfterLimitBreak)
+        public RestClientBuilder HandleRateLimit(Func<HttpResponseMessage, Task<bool>> rateLimitDetector, int delayAfterLimitBreak)
         {
-            _subject.RateLimtBreakedStatusCode = statusCode;
+            _subject.RateLimitDetector = rateLimitDetector;
             _subject.DelayAfterRateLimitBreak = delayAfterLimitBreak;
             return this;
         }
+
+        public RestClientBuilder HandleRateLimit(int statusCode, int delayAfterLimitBreak)
+            => HandleRateLimit(msg => Task.FromResult((int) msg.StatusCode == statusCode), delayAfterLimitBreak);
 
         public RestClientBuilder AddEndpoint(string name, AdvancedHttpRequest endpoint)
         {
@@ -37,12 +41,12 @@ namespace NtFreX.RestClient.NET
         }
 
         public RestClient Build()
-            => new RestClient(_subject.HttpClient, _subject.RateLimtBreakedStatusCode, _subject.DelayAfterRateLimitBreak, _subject.Endpoints);
+            => new RestClient(_subject.HttpClient, _subject.RateLimitDetector, _subject.DelayAfterRateLimitBreak, _subject.Endpoints);
 
         private class RestClientSubject
         {
             public HttpClient HttpClient { get; set; }
-            public int RateLimtBreakedStatusCode { get; set; }
+            public Func<HttpResponseMessage, Task<bool>> RateLimitDetector { get; set; } = msg => Task.FromResult(false);
             public int DelayAfterRateLimitBreak { get; set; }
             public readonly Dictionary<string, AdvancedHttpRequest> Endpoints = new Dictionary<string, AdvancedHttpRequest>();
         }

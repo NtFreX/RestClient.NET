@@ -10,7 +10,7 @@ namespace NtFreX.RestClient.NET.Test
     public class TimeRateLimitedFunctionTest
     {
         [Fact]
-        public void IntervalDoesntGoUnderMinInderval()
+        public async Task IntervalDoesntGoUnderMinInderval()
         {
             DateTime ExecuteFunc()
             {
@@ -26,7 +26,7 @@ namespace NtFreX.RestClient.NET.Test
             {
                 tasks.Add(Task.Run(() => fnc.Execute()));
             }
-            Task.WaitAll(tasks.ToArray());
+            await Task.WhenAll(tasks.ToArray());
 
             tasks = tasks.OrderBy(x => x.Result).ToList();
             var currentDateTime = DateTime.MinValue;

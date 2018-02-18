@@ -9,6 +9,7 @@ namespace NtFreX.RestClient.NET.Flow
 
         public override event EventHandler<object> AfterExecution;
         public override event EventHandler<object[]> BeforeExecution;
+        public override event EventHandler<object[]> ExecutionDelayed;
 
         protected FunctionBase(Func<object[], Task<T>> func)
         {

@@ -12,6 +12,7 @@ namespace NtFreX.RestClient.NET.Flow
 
         public override event EventHandler<object[]> BeforeExecution;
         public override event EventHandler<object> AfterExecution;
+        public override event EventHandler<object[]> ExecutionDelayed;
 
         protected RetryFunctionBase(FunctionBaseDecorator funcBase, int maxRetryCount, Func<object, bool> retryOnResult, Func<Exception, bool> retryOnException)
         {
@@ -22,6 +23,7 @@ namespace NtFreX.RestClient.NET.Flow
 
             _funcBase.BeforeExecution += (sender, objects) => BeforeExecution?.Invoke(sender, objects);
             _funcBase.AfterExecution += (sender, objects) => AfterExecution?.Invoke(sender, objects);
+            _funcBase.ExecutionDelayed += (sender, objects) => ExecutionDelayed?.Invoke(sender, objects);
         }
 
         private async Task<object> ExecuteInnerAsync(object[] arguments, int currentRetryCount)

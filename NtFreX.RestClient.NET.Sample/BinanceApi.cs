@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
@@ -32,7 +33,7 @@ namespace NtFreX.RestClient.NET.Sample
 
             RestClient = new RestClientBuilder()
                 .WithHttpClient(new HttpClient())
-                .HandleRateLimitStatusCode(419, 5000)
+                .HandleRateLimit(IsRateLimitRaised, 5000)
                 .AddEndpoint(BinanceApiEndpointNames.Ping, builder => builder
                     .BaseUri("https://www.binance.com/api/v1/ping")
                     .WeightRateLimit(1, RequestWeightRateLimitConfig)
@@ -46,7 +47,7 @@ namespace NtFreX.RestClient.NET.Sample
                     .WeightRateLimit(1, RequestWeightRateLimitConfig)
                     .Cache(TimeSpan.FromHours(1))
                     .Retry(retryStrategy)
-                    .AfterExecution(ApplyRateLimitsAsync))
+                    .AfterExecution(UpdateRateLimitsAsync))
                 .AddEndpoint(BinanceApiEndpointNames.Trades, builder => builder
                     .BaseUri("https://www.binance.com/api/v1/trades")
                     .AddQueryStringParam((arguments, uri) => ("symbol", arguments[0].ToString()))
@@ -88,13 +89,29 @@ namespace NtFreX.RestClient.NET.Sample
             RestClient.RateLimitRaised += (sender, args) => RateLimitRaised?.Invoke(sender, args);
         }
 
-        private (string, string) GetSignatureQueryStringParam(object[] args, Uri uri)
+        private async Task<bool> IsRateLimitRaised(HttpResponseMessage msg)
+        {
+            try
+            {
+                if (msg.StatusCode != HttpStatusCode.BadRequest)
+                    return false;
+
+                var conent = await msg.Content.ReadAsStringAsync();
+                var obj = JObject.Parse(conent);
+                return obj.Value<int>("code") == -1003;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+        private (string Name, string Value) GetSignatureQueryStringParam(object[] args, Uri uri)
         {
             var encryptor = new HMACSHA256(Encoding.UTF8.GetBytes(_binanceApiKeySecret));
             var signature = ByteToString(encryptor.ComputeHash(Encoding.UTF8.GetBytes(uri.Query.Replace("?", ""))));
             return ("signature", signature);
         }
-        private async Task ApplyRateLimitsAsync(HttpResponseMessage response)
+        private async Task UpdateRateLimitsAsync(HttpResponseMessage response)
         {
             if (!response.IsSuccessStatusCode)
                 return;

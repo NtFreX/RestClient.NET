@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System.Collections.Generic;
+using System.Threading.Tasks;
 using NtFreX.RestClient.NET.Flow;
 using Xunit;
 
@@ -20,7 +21,13 @@ namespace NtFreX.RestClient.NET.Test
             }
             
             var fnc = new AsyncConcurrentFunction(ExecuteFuncAsync, maxConcurrentCount);
-            await fnc.ExecuteAsync();
+
+            var tasks = new List<Task>();
+            for (int i = 0; i < 20; i++)
+            {
+                tasks.Add(Task.Run(async () => await fnc.ExecuteAsync()));
+            }
+            await Task.WhenAll(tasks);
         }
     }
 }
